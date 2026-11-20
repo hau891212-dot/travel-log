@@ -860,3 +860,116 @@ th { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); }
 .guide-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
 .guide-actions button:not(.link) { flex: 1 1 120px; }
 .guide-actions .link { flex-basis: 100%; }
+
+/* ===== 加到主畫面：動畫示意手機 ===== */
+.guide-card { padding-top: 18px; }
+.g-tabs { display: flex; gap: 4px; padding: 3px; margin: 0 auto 10px; width: fit-content; max-width: 100%;
+  background: color-mix(in srgb, var(--ink) 6%, var(--card)); border: 2px solid var(--line); border-radius: 999px; }
+.g-tabs button { min-height: 30px; padding: 2px 12px; font-size: 13px; border: 0; box-shadow: none; background: transparent; }
+.g-tabs button.on { background: var(--yellow); box-shadow: var(--shadow); }
+.g-tabs button:hover { transform: none; }
+
+.mock {
+  --scr: #fff; position: relative; width: 188px; height: 330px; margin: 0 auto; overflow: hidden; cursor: pointer;
+  border: 6px solid #4d4038; border-radius: 30px; background: var(--scr); color: #333;
+  box-shadow: var(--shadow-lg); font: 10px/1.35 -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; text-align: left;
+}
+.mock::before { content: ""; position: absolute; z-index: 9; top: 5px; left: 50%; width: 52px; height: 14px; margin-left: -26px; border-radius: 99px; background: #4d4038; }
+.mock img { display: block; }
+.m-status { position: absolute; top: 0; left: 0; right: 0; height: 24px; padding: 5px 14px 0; font-weight: 600; font-size: 10px; z-index: 2; }
+.m-page { position: absolute; top: 24px; left: 0; right: 0; bottom: 0; padding: 8px; background: #fbf6ec; }
+.m-hero { height: 70px; border-radius: 10px; background: linear-gradient(#cfe6ee, #e9f3f1); display: grid; place-items: center; }
+.m-hero img { width: 40px; height: 40px; border-radius: 10px; }
+.m-page i { display: block; height: 22px; margin-top: 8px; border-radius: 8px; background: #fff; border: 1px solid #e7dccb; }
+.m-page i.s { width: 60%; background: #f6e1a6; border-color: #eed49a; }
+.m-hot { transition: background .2s, color .2s; border-radius: 8px; }
+.m-url { flex: 1; height: 22px; display: grid; place-items: center; border-radius: 9px; background: #eee; color: #666; font-size: 9px; overflow: hidden; white-space: nowrap; }
+
+/* iPhone Safari：底部網址列 + 工具列 */
+.m-ios-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 8px 8px; background: rgba(248,248,248,.96); border-top: 1px solid #ddd; z-index: 2; }
+.m-tools { display: flex; justify-content: space-around; align-items: center; margin-top: 4px; color: #2f7cf6; font-size: 15px; height: 22px; }
+.m-tools svg { width: 18px; height: 18px; }
+.m-tools .m-hot { padding: 2px 5px; }
+.m-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; padding: 10px 10px 16px; background: #f2f2f6;
+  border-radius: 16px 16px 0 0; box-shadow: 0 -6px 18px rgba(0,0,0,.18); transform: translateY(105%); transition: transform .5s cubic-bezier(.2,.9,.3,1);
+}
+.m-sheet-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.m-sheet-head img, .m-add img { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #ddd; }
+.m-sheet-head small, .m-add small { display: block; color: #888; font-size: 8px; }
+.m-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; background: #fff; border-bottom: 1px solid #eee; }
+.m-sheet .m-row:nth-of-type(2) { border-radius: 9px 9px 0 0; }
+.m-sheet .m-row:last-child { border-radius: 0 0 9px 9px; border-bottom: 0; }
+.m-plus { font-size: 12px; width: 16px; height: 16px; display: grid; place-items: center; border: 1.5px solid #333; border-radius: 4px; }
+.m-dialog { position: absolute; z-index: 5; opacity: 0; pointer-events: none; transition: opacity .35s, transform .45s cubic-bezier(.3,1.4,.5,1); }
+.m-full { inset: 0; background: #f2f2f6; padding-top: 26px; transform: translateY(30px); }
+.m-topbar { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-size: 10px; color: #2f7cf6; }
+.m-topbar b { color: #333; }
+.m-topbar .m-hot { padding: 2px 5px; font-weight: 600; }
+.m-add { display: flex; align-items: center; gap: 8px; margin: 8px; padding: 8px; background: #fff; border-radius: 10px; }
+.m-home {
+  position: absolute; inset: 0; z-index: 6; padding: 40px 14px; display: grid; grid-template-columns: repeat(4, 1fr); align-content: start; gap: 14px 10px;
+  background: linear-gradient(160deg, #f6d3cc, #cfe4ee 60%, #d3e5c2); opacity: 0; transition: opacity .5s;
+}
+.m-app { aspect-ratio: 1; border-radius: 9px; background: #fff; opacity: .75; position: relative; }
+.m-app.a0 { background: #8fc2e0; } .m-app.a1 { background: #f2c4bc; } .m-app.a2 { background: #f6e1a6; }
+.m-app.a3 { background: #b9d8a8; } .m-app.a4 { background: #c9b8e8; } .m-app.a5 { background: #fff; }
+.m-app.me { opacity: 1; background: none; transform: scale(0); }
+.m-app.me img { width: 100%; height: 100%; border-radius: 9px; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.m-app.me em { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 2px; font-style: normal; font-size: 7.5px; white-space: nowrap; color: #333; }
+
+/* Android Chrome：上方網址列 + 下拉選單 + 對話框 */
+.m-and-bar { position: absolute; top: 22px; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 4px 6px 6px 8px; background: #fff; border-bottom: 1px solid #e5e5e5; }
+.m-and-bar .m-hot, .m-line-bar .m-hot { width: 22px; height: 22px; display: grid; place-items: center; font-size: 15px; font-weight: 700; }
+.m-android .m-page { top: 56px; }
+.m-menu {
+  position: absolute; z-index: 4; top: 30px; right: 6px; width: 112px; padding: 4px 0; background: #fff; border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.22); transform-origin: top right; transform: scale(.6); opacity: 0; transition: transform .35s cubic-bezier(.3,1.4,.5,1), opacity .25s;
+}
+.m-menu .m-row { border: 0; padding: 7px 12px; border-radius: 0; }
+.m-card { left: 14px; right: 14px; top: 110px; padding: 12px; background: #fff; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); transform: scale(.8); }
+.m-card .m-add { margin: 8px 0; padding: 0; }
+.m-btns { display: flex; justify-content: flex-end; gap: 14px; color: #1a73e8; font-weight: 600; }
+.m-btns .m-hot { padding: 3px 7px; }
+.mock.m-android .m-dialog::after, .mock.m-ios .m-full::before { content: none; }
+.m-android .m-dialog { box-shadow: 0 0 0 999px rgba(0,0,0,0); transition: opacity .35s, transform .45s cubic-bezier(.3,1.4,.5,1), box-shadow .35s; }
+
+/* LINE 內建瀏覽器 */
+.m-line-bar { position: absolute; top: 22px; left: 0; right: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 6px; background: #fff; border-bottom: 1px solid #e5e5e5; }
+.m-inapp .m-page { top: 54px; }
+.m-line-sheet .m-row:first-child { border-radius: 9px 9px 0 0; }
+.m-safari { padding-top: 0; background: var(--scr); }
+.m-ok { position: absolute; left: 0; right: 0; top: 46%; width: fit-content; margin: 0 auto; padding: 5px 12px; background: rgba(40,40,40,.82); color: #fff; border-radius: 99px; white-space: nowrap; }
+
+/* 手指 */
+.m-finger {
+  position: absolute; z-index: 8; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; pointer-events: none;
+  background: rgba(255,184,172,.55); border: 2px solid rgba(110,92,79,.75);
+  transition: left .6s cubic-bezier(.5,0,.3,1), top .6s cubic-bezier(.5,0,.3,1);
+}
+.m-finger.tap { animation: mTap 3s ease-in-out both; }
+.m-finger::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid rgba(242,196,188,.9); opacity: 0; }
+.m-finger.tap::after { animation: mRipple 3s ease-out both; }
+@keyframes mTap { 0% { opacity: 0; transform: scale(1.3); } 20% { opacity: 1; transform: scale(1); } 32% { transform: scale(.75); } 42% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes mRipple { 0%, 30% { opacity: 0; transform: scale(1); } 33% { opacity: 1; } 60% { opacity: 0; transform: scale(2.2); } 100% { opacity: 0; } }
+
+/* 場景切換（data-s = 第幾步）；被點的按鈕在手指按下後亮起 */
+@keyframes mHot { 0%, 30% { background: transparent; } 36%, 100% { background: rgba(47,124,246,.18); } }
+.mock[data-s="1"] .k1, .mock[data-s="2"] .k2, .mock[data-s="3"] .k3 { animation: mHot 3s both; }
+.m-ios[data-s="2"] .m-sheet, .m-ios[data-s="3"] .m-sheet, .m-inapp[data-s="2"] .m-sheet { transform: none; }
+.m-ios[data-s="3"] .m-dialog, .m-inapp[data-s="3"] .m-dialog, .m-android[data-s="3"] .m-dialog { opacity: 1; transform: none; }
+.m-android[data-s="3"] .m-dialog { box-shadow: 0 10px 30px rgba(0,0,0,.25), 0 0 0 999px rgba(0,0,0,.28); }
+.m-android[data-s="2"] .m-menu { opacity: 1; transform: none; }
+.mock[data-s="4"] .m-home { opacity: 1; }
+.mock[data-s="4"] .m-app.me { animation: mPop .6s .5s cubic-bezier(.3,1.8,.5,1) both; }
+@keyframes mPop { from { transform: scale(0) rotate(-20deg); } to { transform: scale(1); } }
+.m-inapp[data-s="3"] .m-ok { animation: mPop .5s .4s cubic-bezier(.3,1.6,.5,1) both; }
+
+.g-dots { display: flex; justify-content: center; gap: 6px; margin: 10px 0 8px; }
+.g-dots button { width: 8px; height: 8px; min-height: 0; min-width: 0; padding: 0; border: 0; border-radius: 99px; box-shadow: none;
+  background: color-mix(in srgb, var(--ink) 25%, transparent); transition: width .3s, background .3s; }
+.g-dots button.on { width: 22px; background: var(--red); }
+.g-step { cursor: pointer; opacity: .55; transition: opacity .3s, transform .3s, background .3s; }
+.g-step.on { opacity: 1; transform: scale(1.02); background: color-mix(in srgb, var(--yellow) 40%, var(--card)); border-style: solid; }
+.g-step.on .g-n { background: var(--red); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .g-step { opacity: 1; } }

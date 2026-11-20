@@ -1292,33 +1292,117 @@ const isStandalone = () => matchMedia('(display-mode: standalone)').matches || n
 const isIOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isInApp = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(UA);
 let installEvt = null;
-addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#guideInstall').hidden = false; });
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#guideInstall').hidden = typeof guide === 'undefined' || guide.plat !== 'android'; });
 addEventListener('appinstalled', () => { closeGuide(); toast('已加到主畫面！'); });
 
 const SHARE_IC = `<svg class="ic" viewBox="0 0 24 24"><path d="M12 3 v12 M7.5 7.5 L12 3 L16.5 7.5"/><path d="M8 10 H5.5 V20.5 H18.5 V10 H16" fill="var(--sky)"/></svg>`;
 const PLUS_IC = `<svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" fill="var(--card)"/><path d="M12 8 v8 M8 12 h8"/></svg>`;
 const DOTS_IC = `<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="18.5" r="1.6" fill="currentColor"/></svg>`;
+// 每個平台：步驟文字 + 示意手機畫面（data-s 切換場景）+ 手指位置（%）
+const appIc = '<img src="icons/icon-192.png" alt="">';
+const IOS_SHARE = `<svg viewBox="0 0 24 24"><path d="M12 3 v12 M7.5 7.5 L12 3 L16.5 7.5 M8 10 H5.5 V20.5 H18.5 V10 H16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const mPage = `<div class="m-page"><div class="m-hero"><img src="icons/icon-192.png" alt=""></div><i></i><i></i><i class="s"></i><i></i><i class="s"></i></div>`;
+const mHome = `<div class="m-home">${Array.from({ length: 11 }, (_, i) => `<span class="m-app a${i % 6}"></span>`).join('')}<span class="m-app me">${appIc}<em>旅遊手帳</em></span></div>`;
+const GUIDE = {
+  ios: {
+    finger: [[50, 93], [50, 81], [84, 13], null],
+    steps: [
+      `點 Safari 下方的<b>分享</b>按鈕 ${SHARE_IC}`,
+      `選單往上滑，點<b>「加入主畫面」</b> ${PLUS_IC}`,
+      `右上角按<b>「加入」</b>`,
+      `完成！主畫面出現<b>「旅遊手帳」</b>，之後都從這裡打開`,
+    ],
+    tip: '找不到「加入主畫面」？請確認是用 <b>Safari</b> 開啟；用 Chrome 的話，分享按鈕在網址列右邊。',
+    mock: `<div class="m-status"><span>9:41</span></div>
+      ${mPage}
+      <div class="m-ios-bar"><div class="m-url">hau891212-dot.github.io</div>
+        <div class="m-tools"><span>‹</span><span>›</span><span class="m-hot k1">${IOS_SHARE}</span><span>▢</span><span>⧉</span></div></div>
+      <div class="m-sheet"><div class="m-sheet-head">${appIc}<div><b>旅遊手帳</b><small>github.io</small></div></div>
+        <div class="m-row">拷貝</div><div class="m-row">加入書籤</div>
+        <div class="m-row m-hot k2">加入主畫面 <span class="m-plus">＋</span></div><div class="m-row">加入快速備忘錄</div></div>
+      <div class="m-dialog m-full"><div class="m-topbar"><span>取消</span><b>加入主畫面</b><span class="m-hot k3">加入</span></div>
+        <div class="m-add">${appIc}<div><b>旅遊手帳</b><small>hau891212-dot.github.io</small></div></div></div>
+      ${mHome}`,
+  },
+  android: {
+    finger: [[90, 10], [60, 41], [75, 60], null],
+    steps: [
+      `點 Chrome 右上角的選單 ${DOTS_IC}`,
+      `點<b>「加到主畫面」</b>或<b>「安裝應用程式」</b>`,
+      `按<b>「新增」</b>（或「安裝」）`,
+      `完成！主畫面出現<b>「旅遊手帳」</b>，之後都從這裡打開`,
+    ],
+    tip: '如果下面出現「立即安裝」按鈕，直接按它最快。',
+    mock: `<div class="m-status"><span>9:41</span></div>
+      <div class="m-and-bar"><div class="m-url">github.io/travel-log</div><span class="m-hot k1">⋮</span></div>
+      ${mPage}
+      <div class="m-menu"><div class="m-row">新分頁</div><div class="m-row">書籤</div><div class="m-row">記錄</div>
+        <div class="m-row m-hot k2">加到主畫面</div><div class="m-row">設定</div></div>
+      <div class="m-dialog m-card"><b>加到主畫面</b><div class="m-add">${appIc}<span>旅遊手帳</span></div>
+        <div class="m-btns"><span>取消</span><span class="m-hot k3">新增</span></div></div>
+      ${mHome}`,
+  },
+  inapp: {
+    finger: [[90, 10], [50, 90], null],
+    steps: [
+      `在 LINE / IG 裡面沒辦法加到主畫面。先點右上角的 ${DOTS_IC}`,
+      `選<b>「${isIOS ? '以 Safari 開啟' : '用預設瀏覽器開啟'}」</b>`,
+      `在${isIOS ? ' Safari' : ' Chrome'} 打開後，再照這個教學的「${isIOS ? 'iPhone' : 'Android'}」步驟加到主畫面`,
+    ],
+    tip: '',
+    mock: `<div class="m-status"><span>9:41</span></div>
+      <div class="m-line-bar"><span>✕</span><b>旅遊手帳</b><span class="m-hot k1">⋯</span></div>
+      ${mPage}
+      <div class="m-sheet m-line-sheet"><div class="m-row">分享</div><div class="m-row">複製連結</div>
+        <div class="m-row m-hot k2">${isIOS ? '以 Safari 開啟' : '用預設瀏覽器開啟'}</div></div>
+      <div class="m-dialog m-full m-safari"><div class="m-status"><span>9:41</span></div>${mPage}
+        <div class="m-ios-bar"><div class="m-url">hau891212-dot.github.io</div></div><div class="m-ok">已在${isIOS ? ' Safari' : '瀏覽器'}開啟</div></div>`,
+  },
+};
 const step = (n, html) => `<div class="g-step"><span class="g-n">${n}</span><div>${html}</div></div>`;
-function guideSteps() {
-  if (isInApp) return step(1, `你現在在 LINE / IG 裡面開的網頁，沒辦法加到主畫面`)
-    + step(2, `點右上角 ${DOTS_IC} 或右下角選單，選<b>「用預設瀏覽器開啟」</b>${isIOS ? '（Safari）' : '（Chrome）'}`)
-    + step(3, `在${isIOS ? ' Safari' : ' Chrome'} 打開後，照著畫面上的教學加到主畫面`);
-  if (isIOS) return step(1, `點畫面下方（或網址列旁）的<b>分享</b>按鈕 ${SHARE_IC}`)
-    + step(2, `往下滑，點<b>「加入主畫面」</b> ${PLUS_IC}`)
-    + step(3, `右上角按<b>「加入」</b>，主畫面就會出現「旅遊手帳」`)
-    + `<p class="muted small g-tip">找不到「加入主畫面」？請確認是用 <b>Safari</b> 開啟。用 Chrome 的話，分享按鈕在網址列右邊。</p>`;
-  if (installEvt) return step(1, `按下面的<b>「立即安裝」</b>`) + step(2, `跳出視窗後按<b>「安裝」</b>就完成了`);
-  return step(1, `點右上角的選單 ${DOTS_IC}`)
-    + step(2, `選<b>「加到主畫面」</b>或<b>「安裝應用程式」</b>`)
-    + step(3, `按<b>「新增」</b>，主畫面就會出現「旅遊手帳」`);
+const guide = { plat: isInApp ? 'inapp' : isIOS ? 'ios' : 'android', s: 0, timer: null };
+function guideShow(s) {
+  const g = GUIDE[guide.plat], n = g.steps.length;
+  guide.s = (s + n) % n;
+  const mock = $('#guideMock .mock'); if (!mock) return;
+  mock.dataset.s = guide.s + 1;
+  const f = $('.m-finger', mock), pos = g.finger[guide.s];
+  f.hidden = !pos;
+  if (pos) { f.style.left = pos[0] + '%'; f.style.top = pos[1] + '%'; f.classList.remove('tap'); void f.offsetWidth; f.classList.add('tap'); }
+  $$('#guideSteps .g-step').forEach((el, i) => el.classList.toggle('on', i === guide.s));
+  $$('#guideDots button').forEach((el, i) => el.classList.toggle('on', i === guide.s));
 }
+function guidePlay() {
+  clearInterval(guide.timer);
+  guide.timer = setInterval(() => { if (!$('#installGuide').hidden) guideShow(guide.s + 1); else clearInterval(guide.timer); }, 3000);
+}
+function guideRender() {
+  const g = GUIDE[guide.plat];
+  $$('#guideTabs button').forEach(b => b.classList.toggle('on', b.dataset.plat === guide.plat));
+  $('#guideMock').innerHTML = `<div class="mock m-${guide.plat}" data-s="1">${g.mock}<span class="m-finger" hidden></span></div>`;
+  $('#guideDots').innerHTML = g.steps.map((_, i) => `<button type="button" data-i="${i}" aria-label="第 ${i + 1} 步"></button>`).join('');
+  $('#guideSteps').innerHTML = g.steps.map((t, i) => step(i + 1, t).replace('class="g-step"', `class="g-step" data-i="${i}"`)).join('')
+    + (g.tip ? `<p class="muted small g-tip">${g.tip}</p>` : '');
+  $('#guideInstall').hidden = !installEvt || guide.plat !== 'android';
+  requestAnimationFrame(() => guideShow(0));
+  guidePlay();
+}
+$('#guideTabs').addEventListener('click', e => {
+  const p = e.target.closest('[data-plat]')?.dataset.plat;
+  if (p && p !== guide.plat) { guide.plat = p; guideRender(); }
+});
+$('#installGuide').addEventListener('click', e => {
+  const i = e.target.closest('#guideDots [data-i], #guideSteps [data-i]')?.dataset.i;
+  if (i !== undefined) { guideShow(+i); guidePlay(); }
+  else if (e.target.closest('#guideMock')) { guideShow(guide.s + 1); guidePlay(); }
+});
 function openGuide() {
-  $('#guideSteps').innerHTML = guideSteps();
-  $('#guideInstall').hidden = !installEvt || isInApp;
+  guideRender();
   $('#installGuide').hidden = false;
   requestAnimationFrame(() => $('#installGuide').classList.add('show'));
 }
 function closeGuide() {
+  clearInterval(guide.timer);
   $('#installGuide').classList.remove('show');
   setTimeout(() => { $('#installGuide').hidden = true; }, 250);
 }
@@ -1352,7 +1436,7 @@ navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261120230728';
+const APP_VERSION = '20261120235122';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
