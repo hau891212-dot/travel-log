@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>旅遊紀錄</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="trip-picker">
+    <select id="tripSelect" aria-label="選擇旅程"></select>
+    <button class="ghost" id="newTripBtn" title="新增旅程">＋</button>
+  </div>
+  <div class="trip-meta" id="tripMeta"></div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="live" class="active">🟢 即時</button>
+  <button data-tab="prep">📋 前置</button>
+  <button data-tab="plan">🗓️ 行程</button>
+  <button data-tab="money">💰 記帳</button>
+  <button data-tab="settle">📊 結算</button>
+  <button data-tab="settings">⚙️ 設定</button>
+</nav>
+
+<main>
+  <!-- 即時行程 -->
+  <section id="tab-live" class="tab active">
+    <div class="clock" id="clock"></div>
+    <div id="liveBox"></div>
+    <h3>今日行程</h3>
+    <div id="todayList"></div>
+  </section>
+
+  <!-- 前置作業 -->
+  <section id="tab-prep" class="tab">
+    <div class="progress"><div id="prepBar"></div></div>
+    <p class="muted" id="prepStat"></p>
+    <form id="prepForm" class="row-form">
+      <input name="text" placeholder="待辦事項，例如：訂機票、換日幣" required>
+      <select name="cat">
+        <option>交通</option><option>住宿</option><option>證件</option>
+        <option>行李</option><option>票券</option><option>其他</option>
+      </select>
+      <select name="owner" class="member-select"></select>
+      <input name="due" type="date" title="期限">
+      <button>新增</button>
+    </form>
+    <div id="prepList"></div>
+  </section>
+
+  <!-- 行程安排 -->
+  <section id="tab-plan" class="tab">
+    <form id="planForm" class="row-form">
+      <input name="date" type="date" required>
+      <input name="start" type="time" required>
+      <input name="end" type="time">
+      <input name="title" placeholder="行程名稱" required>
+      <input name="place" placeholder="地點（可開地圖）">
+      <input name="note" placeholder="備註 / 訂位代號">
+      <input type="hidden" name="id">
+      <button>儲存</button>
+    </form>
+    <div id="planList"></div>
+  </section>
+
+  <!-- 記帳 -->
+  <section id="tab-money" class="tab">
+    <form id="moneyForm" class="card form-grid">
+      <label>類型
+        <select name="type"><option value="expense">支出</option><option value="income">收入 / 退款</option></select>
+      </label>
+      <label>日期<input name="date" type="date" required></label>
+      <label>項目<input name="title" placeholder="例如：晚餐燒肉" required></label>
+      <label>分類
+        <select name="cat">
+          <option>餐飲</option><option>交通</option><option>住宿</option><option>門票</option>
+          <option>購物</option><option>前置費用</option><option>其他</option>
+        </select>
+      </label>
+      <label>金額<input name="amount" type="number" step="0.01" min="0" required></label>
+      <label>付款 / 收款人<select name="payer" class="member-select" required></select></label>
+      <div class="full">
+        <span class="lbl">分攤成員</span>
+        <div id="splitBox" class="chips"></div>
+      </div>
+      <input type="hidden" name="id">
+      <div class="full actions">
+        <button>儲存</button>
+        <button type="button" class="ghost" id="moneyReset">清除</button>
+      </div>
+    </form>
+    <div class="filter">
+      <select id="moneyFilter"><option value="">全部分類</option></select>
+    </div>
+    <div id="moneyList"></div>
+  </section>
+
+  <!-- 結算 -->
+  <section id="tab-settle" class="tab">
+    <div class="stats" id="settleStats"></div>
+    <h3>每人費用</h3>
+    <div id="personTable"></div>
+    <h3>建議轉帳</h3>
+    <div id="transfers"></div>
+    <h3>分類統計</h3>
+    <div id="catTable"></div>
+    <h3>每日支出</h3>
+    <div id="dayTable"></div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="tab-settings" class="tab">
+    <form id="tripForm" class="card form-grid">
+      <label>旅程名稱<input name="name" required></label>
+      <label>幣別<input name="currency" placeholder="TWD / JPY"></label>
+      <label>出發日<input name="start" type="date"></label>
+      <label>回程日<input name="end" type="date"></label>
+      <label>預算<input name="budget" type="number" min="0"></label>
+      <div class="full actions"><button>儲存旅程設定</button></div>
+    </form>
+
+    <h3>成員</h3>
+    <form id="memberForm" class="row-form">
+      <input name="name" placeholder="成員名字" required>
+      <button>新增成員</button>
+    </form>
+    <div id="memberList" class="chips"></div>
+
+    <h3>資料</h3>
+    <div class="actions">
+      <button class="ghost" id="exportBtn">匯出 JSON</button>
+      <label class="ghost btn">匯入 JSON<input type="file" id="importFile" accept=".json" hidden></label>
+      <button class="danger" id="deleteTripBtn">刪除此旅程</button>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
