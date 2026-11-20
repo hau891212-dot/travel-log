@@ -924,9 +924,9 @@ $('#importFile').addEventListener('change', async e => {
   e.target.value = '';
 });
 $('#deleteTripBtn').addEventListener('click', () => {
-  if (!confirm(`確定刪除「${trip().name}」？此動作無法復原，建議先匯出備份。`)) return;
+  if (!confirm(`確定刪除「${trip().name}」？所有旅伴的手機也會一起刪除，無法復原，建議先匯出備份。`)) return;
   const gone = trip();
-  if (gone.sync) cloudStop(gone, true);
+  if (gone.sync) cloudStop(gone);
   db.trips = db.trips.filter(t => t.id !== db.current);
   if (!db.trips.length) db.trips.push(newTrip());
   db.current = db.trips[0].id; save(); resetForms(); render();
@@ -1098,6 +1098,7 @@ function cloudUnlisten(code) {
 }
 
 function cloudDirty() {
+  if (cloud.spaceLoaded && db.trips.some(t => !t.sync && !untouched(t))) autoUpload();
   if (!db.trips.some(t => t.sync)) return;
   clearTimeout(cloud.timer);
   cloud.timer = setTimeout(cloudPushAll, 900);
@@ -1137,49 +1138,93 @@ async function cloudPush(t) {
   }
 }
 
-async function cloudStart() {
-  const t = trip();
+// ===== 自動同步：所有旅程都登記在同一個共用空間，打開網站就同步 =====
+const SPACE = 'kfbvgdcgwj1p9j3uljtmx1ig0gbf';
+const untouched = t => !t.members.length && !t.plan.length && !t.money.length && !t.prep.length && !t.bookings.length;
+cloud.joining = {};
+async function spaceSet(op, code) {
+  const { F, store } = await fb();
+  await F.setDoc(F.doc(store, 'spaces', SPACE), { codes: F[op](code), at: Date.now() }, { merge: true });
+}
+async function cloudStart(t = trip()) {
   if (t.sync) return;
   t.sync = newCode();
   db.sync[t.sync] = {};
   save(true); renderCloud();
   try {
     await cloudPush(t);
+    await spaceSet('arrayUnion', t.sync);
+    if (db.sync[t.sync]) { db.sync[t.sync].reg = true; save(true); }
     cloudListen(t);
-    toast('已開啟雲端同步，把分享碼傳給旅伴吧！');
   } catch {
-    delete db.sync[t.sync]; delete t.sync; save(true); renderCloud();
-    toast('連不上雲端，請確認網路後再試一次');
+    if (db.sync[t.sync] && !db.sync[t.sync].rev) { delete db.sync[t.sync]; delete t.sync; save(true); renderCloud(); }
   }
 }
-function cloudStop(t = trip(), silent = false) {
+function cloudStop(t = trip()) {
   if (!t.sync) return;
-  if (!silent && !confirm('停止後這支手機不再和雲端同步（雲端和旅伴的資料不會被刪除）。確定嗎？')) return;
-  cloudUnlisten(t.sync);
-  delete db.sync[t.sync]; delete t.sync;
-  save(true); renderCloud();
-  if (!silent) toast('已停止同步');
+  const code = t.sync;
+  cloudUnlisten(code);
+  delete db.sync[code]; delete t.sync;
+  save(true);
+  spaceSet('arrayRemove', code).catch(() => {});
 }
-async function cloudJoin(raw) {
+async function cloudJoin(raw, silent = false) {
   const code = parseCode(raw);
-  if (code.length < 20) return toast('分享碼不正確');
+  if (code.length < 20) return silent || toast('分享碼不正確');
   const exist = db.trips.find(t => t.sync === code);
-  if (exist) { db.current = exist.id; save(true); resetForms(); return toast('這個旅程已經在手機裡了'); }
-  toast('連線中…');
+  if (exist) { if (!silent) { db.current = exist.id; save(true); resetForms(); } return; }
+  if (cloud.joining[code]) return;
+  cloud.joining[code] = true;
   try {
     const { F, store } = await fb();
     const snap = await F.getDoc(F.doc(store, 'trips', code));
-    if (!snap.exists()) return toast('找不到這個旅程，請確認分享碼');
+    if (!snap.exists()) return silent || toast('找不到這個旅程');
     const d = snap.data(), data = migrate(plain(d.trip));
     const same = db.trips.find(t => t.id === data.id);
-    if (same && !confirm(`手機裡已經有「${same.name}」，要用雲端的版本取代嗎？`)) return;
-    if (same) db.trips = db.trips.filter(t => t !== same);
-    data.sync = code;
-    db.trips.push(data); db.current = data.id;
-    db.sync[code] = { base: J(d.trip), rev: d.rev };
-    save(true); resetForms(); cloudListen(data);
-    toast(`已加入「${esc(data.name)}」`);
-  } catch { toast('連不上雲端，請確認網路後再試一次'); }
+    if (same) { // 本機已有同一趟（例如以前停過同步）：接上同步，之後自動合併
+      same.sync = code; db.sync[code] = { reg: silent };
+    } else {
+      data.sync = code; db.trips.push(data);
+      db.sync[code] = { base: J(d.trip), rev: d.rev, reg: silent }; // 從共用空間來的，之後空間拿掉就跟著刪
+    }
+    // 新手機上沒動過的預設旅程，直接換成雲端的
+    const cur = trip(), before = db.current;
+    if (cur.id !== data.id && !cur.sync && untouched(cur)) { db.trips = db.trips.filter(t => t !== cur); db.current = data.id; }
+    if (!silent) db.current = data.id;
+    save(true); cloudListen(same || data);
+    if (db.current !== before) resetForms(); else render(); // 沒換旅程就不要清掉正在填的表單
+    if (!silent) toast(`已加入「${esc(data.name)}」`);
+  } catch { if (!silent) toast('連不上雲端，請確認網路後再試一次'); }
+  finally { delete cloud.joining[code]; }
+}
+function autoUpload() {
+  if (!cloud.spaceLoaded) return;
+  db.trips.forEach(t => { if (!t.sync && !untouched(t)) cloudStart(t); });
+}
+function spaceInit() {
+  if (cloud.space) return;
+  cloud.space = 'pending';
+  fb().then(({ F, store }) => {
+    cloud.space = F.onSnapshot(F.doc(store, 'spaces', SPACE), snap => {
+      const codes = snap.exists() ? snap.data().codes || [] : [];
+      // 別的手機刪掉的旅程，這邊也拿掉
+      for (const t of [...db.trips]) {
+        if (!t.sync) continue;
+        const s = db.sync[t.sync] ||= {};
+        if (codes.includes(t.sync)) { if (!s.reg) { s.reg = true; save(true); } }
+        else if (s.reg) {
+          cloudUnlisten(t.sync); delete db.sync[t.sync];
+          db.trips = db.trips.filter(x => x !== t);
+          if (!db.trips.length) db.trips.push(newTrip());
+          if (!db.trips.some(x => x.id === db.current)) db.current = db.trips[0].id;
+          save(true); resetForms();
+        }
+      }
+      codes.forEach(c => cloudJoin(c, true));
+      cloud.spaceLoaded = true;
+      autoUpload(); renderCloud();
+    }, () => { cloud.space = null; });
+  }).catch(() => { cloud.space = null; });
 }
 
 const timeAgo = ms => {
@@ -1198,36 +1243,28 @@ function renderCloud() {
     badge.innerHTML = `${ic(st.status === 'ok' || st.status === 'saving' ? 'cloud' : 'cloud-off')}${st.status === 'ok' ? '已同步' : st.status === 'saving' ? '同步中' : '未同步'}`;
   }
   box.innerHTML = t.sync ? `
-    <div class="cloud-head">${ic('cloud')}<b>「${esc(t.name)}」雲端同步中</b></div>
+    <div class="cloud-head">${ic('cloud')}<b>自動同步中</b></div>
     <div class="cloud-status ${st.status}">${CLOUD_TEXT[st.status] || ''}${st.status === 'ok' && st.at ? `・${timeAgo(st.at)}更新` : ''}</div>
-    <div class="lbl">分享碼（給旅伴，對方在下面「加入旅程」貼上）</div>
-    <button type="button" class="code cloud-code" data-act="copy">${ic('copy')}${t.sync.slice(0, 4)}-${t.sync.slice(4, 8)}…</button>
-    <div class="actions">
-      <button type="button" data-act="share">${ic('share')} 傳給旅伴</button>
-      <button type="button" class="ghost" data-act="stop">停止同步</button>
-    </div>
-    <p class="muted small">拿到分享碼的人都能看和修改這趟旅程，只傳給一起去的人。</p>`
+    <p class="muted small">所有旅程都會自動存到雲端。旅伴只要打開這個網站，就會看到同一份行程和帳本，誰改了大家都會即時更新。</p>
+    <button type="button" data-act="share">${ic('share')} 把網址傳給旅伴</button>`
   : `
-    <div class="cloud-head">${ic('cloud-off')}<b>「${esc(t.name)}」目前只存在這支手機</b></div>
-    <p class="muted small">開啟後資料會存到雲端：換手機不會不見，旅伴也能一起看行程、一起記帳，誰改了大家都會即時更新。</p>
-    <button type="button" class="wide" data-act="start">${ic('cloud')} 開啟雲端同步</button>`;
+    <div class="cloud-head">${ic(untouched(t) ? 'cloud' : 'cloud-off')}<b>${untouched(t) ? '新旅程' : '準備上傳…'}</b></div>
+    <p class="muted small">${untouched(t) ? '開始填資料（成員、行程或記帳）後就會自動上傳雲端。' : navigator.onLine ? '正在連線雲端。' : '目前離線，有網路時會自動上傳。'}</p>`;
 }
 $('#cloudBox').addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act, t = trip();
-  if (act === 'start') cloudStart();
-  else if (act === 'stop') cloudStop();
-  else if (act === 'copy') copyText(shareLink(t.sync), '已複製分享連結');
-  else if (act === 'share') shareText(`一起用旅遊手帳看「${t.name}」的行程和帳本！\n打開這個連結就能加入：\n${shareLink(t.sync)}`, t.name);
+  if (act === 'share') shareText(`一起用旅遊手帳看「${t.name}」的行程和帳本！\n打開網站就會自動同步：\n${location.origin}${location.pathname}`, t.name);
 });
 $('#joinForm').addEventListener('submit', e => {
   e.preventDefault();
   cloudJoin(e.target.elements.code.value); e.target.reset();
 });
 $('#syncBadge').addEventListener('click', () => { goTab('settings'); setTimeout(() => scrollToEl($('#sec-cloud')), 350); });
-addEventListener('online', () => { db.trips.forEach(cloudListen); cloudDirty(); cloudPushAll(); });
+addEventListener('online', () => { spaceInit(); db.trips.forEach(cloudListen); cloudDirty(); cloudPushAll(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) renderCloud(); });
 
 function cloudInit() {
+  spaceInit();
   db.trips.forEach(t => t.sync && cloudListen(t));
   cloudPushAll();
   const code = new URLSearchParams(location.search).get('join');
@@ -1237,13 +1274,73 @@ function cloudInit() {
   }
 }
 
+// ===== 加到主畫面引導 =====
+const UA = navigator.userAgent;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isInApp = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(UA);
+let installEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('#guideInstall').hidden = false; });
+addEventListener('appinstalled', () => { closeGuide(); toast('已加到主畫面！'); });
+
+const SHARE_IC = `<svg class="ic" viewBox="0 0 24 24"><path d="M12 3 v12 M7.5 7.5 L12 3 L16.5 7.5"/><path d="M8 10 H5.5 V20.5 H18.5 V10 H16" fill="var(--sky)"/></svg>`;
+const PLUS_IC = `<svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" fill="var(--card)"/><path d="M12 8 v8 M8 12 h8"/></svg>`;
+const DOTS_IC = `<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="18.5" r="1.6" fill="currentColor"/></svg>`;
+const step = (n, html) => `<div class="g-step"><span class="g-n">${n}</span><div>${html}</div></div>`;
+function guideSteps() {
+  if (isInApp) return step(1, `你現在在 LINE / IG 裡面開的網頁，沒辦法加到主畫面`)
+    + step(2, `點右上角 ${DOTS_IC} 或右下角選單，選<b>「用預設瀏覽器開啟」</b>${isIOS ? '（Safari）' : '（Chrome）'}`)
+    + step(3, `在${isIOS ? ' Safari' : ' Chrome'} 打開後，照著畫面上的教學加到主畫面`);
+  if (isIOS) return step(1, `點畫面下方（或網址列旁）的<b>分享</b>按鈕 ${SHARE_IC}`)
+    + step(2, `往下滑，點<b>「加入主畫面」</b> ${PLUS_IC}`)
+    + step(3, `右上角按<b>「加入」</b>，主畫面就會出現「旅遊手帳」`)
+    + `<p class="muted small g-tip">找不到「加入主畫面」？請確認是用 <b>Safari</b> 開啟。用 Chrome 的話，分享按鈕在網址列右邊。</p>`;
+  if (installEvt) return step(1, `按下面的<b>「立即安裝」</b>`) + step(2, `跳出視窗後按<b>「安裝」</b>就完成了`);
+  return step(1, `點右上角的選單 ${DOTS_IC}`)
+    + step(2, `選<b>「加到主畫面」</b>或<b>「安裝應用程式」</b>`)
+    + step(3, `按<b>「新增」</b>，主畫面就會出現「旅遊手帳」`);
+}
+function openGuide() {
+  $('#guideSteps').innerHTML = guideSteps();
+  $('#guideInstall').hidden = !installEvt || isInApp;
+  $('#installGuide').hidden = false;
+  requestAnimationFrame(() => $('#installGuide').classList.add('show'));
+}
+function closeGuide() {
+  $('#installGuide').classList.remove('show');
+  setTimeout(() => { $('#installGuide').hidden = true; }, 250);
+}
+$('#installGuide').addEventListener('click', e => {
+  const act = e.target.closest('[data-guide]')?.dataset.guide;
+  if (e.target.id === 'installGuide' || act === 'close' || act === 'later') {
+    closeGuide(); try { sessionStorage.setItem('tl-guide', '1'); } catch {}
+  } else if (act === 'never') {
+    closeGuide(); try { localStorage.setItem('tl-guide-never', '1'); } catch {}
+    toast('之後可以在「更多 → 資料備份」再打開教學');
+  }
+});
+$('#guideInstall').addEventListener('click', async () => {
+  if (!installEvt) return;
+  installEvt.prompt();
+  const { outcome } = await installEvt.userChoice.catch(() => ({}));
+  installEvt = null;
+  if (outcome === 'accepted') closeGuide(); else $('#guideInstall').hidden = true;
+});
+$('#installGuideBtn').addEventListener('click', () => isStandalone() ? toast('已經是從主畫面打開的囉！') : openGuide());
+(() => {
+  let never = false, shown = false;
+  try { never = localStorage.getItem('tl-guide-never'); shown = sessionStorage.getItem('tl-guide'); } catch {}
+  const touch = matchMedia('(pointer: coarse)').matches;
+  if (!isStandalone() && !never && !shown && touch) setTimeout(openGuide, 1200);
+})();
+
 resetForms();
 cloudInit();
 navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261120224608';
+const APP_VERSION = '20261120225948';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

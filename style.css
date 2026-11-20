@@ -832,3 +832,31 @@ th { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); }
 .sync-badge.saving { background: var(--sky); }
 .sync-badge.offline, .sync-badge.error, .sync-badge.missing { background: var(--coral); }
 .sync-badge.saving .ic { animation: floaty 1.2s ease-in-out infinite; }
+
+/* ===== 加到主畫面教學 ===== */
+.guide {
+  position: fixed; inset: 0; z-index: 70; display: grid; place-items: end center;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--ink) 35%, transparent); opacity: 0; transition: opacity .25s;
+}
+.guide.show { opacity: 1; }
+.guide-card {
+  width: min(100%, 440px); max-height: calc(100vh - 32px); overflow-y: auto; text-align: center; padding: 22px 18px 16px;
+  transform: translateY(40px); transition: transform .4s cubic-bezier(.3,1.4,.5,1);
+}
+.guide.show .guide-card { transform: none; }
+.guide-x { position: absolute; top: 8px; right: 8px; }
+.guide-app { width: 64px; height: 64px; border-radius: 16px; border: 2px solid var(--line); box-shadow: var(--shadow); animation: floaty 4s ease-in-out infinite; }
+.guide h2 { font-size: 21px; font-weight: 400; margin: 10px 0 2px; }
+.guide-card > p { margin: 0 0 14px; }
+#guideSteps { display: grid; gap: 10px; text-align: left; }
+.g-step { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r1);
+  background: color-mix(in srgb, var(--sky) 45%, var(--card)); border: 2px dashed color-mix(in srgb, var(--ink) 30%, transparent); }
+.g-step b { font-weight: 400; color: var(--sea-deep); }
+.g-step .ic { width: 1.5em; height: 1.5em; vertical-align: -0.4em; }
+.g-n { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%;
+  background: var(--yellow); border: 2px solid var(--line); font-size: 15px; }
+.g-tip { margin: 2px 4px 0; text-align: left; }
+.guide-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+.guide-actions button:not(.link) { flex: 1 1 120px; }
+.guide-actions .link { flex-basis: 100%; }

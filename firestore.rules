@@ -11,6 +11,15 @@ service cloud.firestore {
       allow delete: if false;
       allow list: if false;
     }
+    // 共用空間：記錄有哪些旅程（打開網站自動同步用）
+    match /spaces/{id} {
+      allow get: if id.size() >= 20;
+      allow create, update: if id.size() >= 20
+        && request.resource.data.keys().hasOnly(['codes', 'at'])
+        && request.resource.data.codes is list
+        && request.resource.data.codes.size() < 300;
+      allow delete, list: if false;
+    }
     match /{document=**} { allow read, write: if false; }
   }
 }

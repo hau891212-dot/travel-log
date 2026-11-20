@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261120224608">
+<link rel="stylesheet" href="style.css?v=20261120225948">
 </head>
 <body>
 
@@ -401,7 +401,7 @@
 
     <h3 id="sec-cloud">雲端同步</h3>
     <div id="cloudBox" class="card cloud"></div>
-    <form id="joinForm" class="row-form join">
+    <form id="joinForm" class="row-form join" hidden>
       <input name="code" placeholder="貼上旅伴的分享碼或連結" autocomplete="off" autocapitalize="off" spellcheck="false" required>
       <button>加入旅程</button>
     </form>
@@ -472,7 +472,8 @@
     </div>
 
     <h3 id="sec-data">資料備份</h3>
-    <p class="muted small">資料只存在這支手機的瀏覽器裡，建議出發前和回國後各備份一次。</p>
+    <p class="muted small">資料會自動存到雲端，也建議出發前和回國後各匯出備份一次。</p>
+    <button type="button" class="ghost wide" id="installGuideBtn"><svg class="ic"><use href="#ic-phone"/></svg> 怎麼加到手機主畫面</button>
     <div class="actions">
       <button class="ghost" id="exportBtn"><svg class="ic"><use href="#ic-download"/></svg> 匯出此旅程</button>
       <button class="ghost" id="exportAllBtn"><svg class="ic"><use href="#ic-download"/></svg> 匯出全部</button>
@@ -482,8 +483,22 @@
   </section>
 </main>
 
+<div id="installGuide" class="guide" hidden>
+  <div class="guide-card card" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <button type="button" class="icon guide-x" data-guide="close" title="關閉"><svg class="ic"><use href="#ic-x"/></svg></button>
+    <img src="icons/icon-192.png" alt="" class="guide-app">
+    <h2 id="guideTitle">把旅遊手帳放到主畫面</h2>
+    <p class="muted small">像 App 一樣一鍵打開、全螢幕、沒網路也能看行程</p>
+    <div id="guideSteps"></div>
+    <div class="guide-actions">
+      <button type="button" id="guideInstall" hidden>立即安裝</button>
+      <button type="button" class="ghost" data-guide="later">之後再說</button>
+      <button type="button" class="link" data-guide="never">不要再提醒</button>
+    </div>
+  </div>
+</div>
 <footer class="foot"><svg class="ic"><use href="#ic-plane"/></svg> 釜山 <svg class="ic"><use href="#ic-swap"/></svg> 福岡 <svg class="ic"><use href="#ic-ferry"/></svg><br>祝旅途愉快！</footer>
 
-<script src="app.js?v=20261120224608"></script>
+<script src="app.js?v=20261120225948"></script>
 </body>
 </html>
