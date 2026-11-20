@@ -1,20 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#e6f4fb"/>
-  <g stroke="#5a4a44" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="150" cy="140" r="62" fill="#ffe08a"/>
+  <rect width="512" height="512" fill="#dcebf0"/>
+  <g stroke="#6e5c4f" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="150" cy="140" r="62" fill="#f6e1a6"/>
     <path d="M130 132 v6 M170 132 v6 M132 158 q18 14 36 0" fill="none"/>
     <path d="M300 128 a26 26 0 0 1 38 -28 a38 38 0 0 1 72 4 a24 24 0 0 1 22 24 Z" fill="#ffffff"/>
     <path d="M380 330 L392 150 H412 L424 330 Z" fill="#d6eef6"/>
     <path d="M402 150 V112" fill="none"/>
-    <rect x="378" y="176" width="48" height="26" rx="6" fill="#a8dcef"/>
-    <path d="M-20 330 q32 -14 64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0 V540 H-20 Z" fill="#a8dcef"/>
+    <rect x="378" y="176" width="48" height="26" rx="6" fill="#bcdbe6"/>
+    <path d="M-20 330 q32 -14 64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0 V540 H-20 Z" fill="#bcdbe6"/>
     <path d="M-20 420 q32 -12 64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0 t64 0" fill="none" stroke="#ffffff" stroke-width="10"/>
     <g transform="translate(220 300)">
-      <path d="M-34 -70 h28 v34 h-28 Z" fill="#ffb8ac"/>
+      <path d="M-34 -70 h28 v34 h-28 Z" fill="#f2c4bc"/>
       <rect x="-70" y="-38" width="120" height="38" fill="#fffdf7"/>
       <path d="M-50 -20 h12 M-20 -20 h12 M10 -20 h12" fill="none"/>
       <path d="M-120 0 H120 L92 52 H-96 Z" fill="#fffdf7"/>
-      <path d="M-108 22 H108" fill="none" stroke="#4a9cc4" stroke-width="12"/>
+      <path d="M-108 22 H108" fill="none" stroke="#5f8fae" stroke-width="12"/>
     </g>
   </g>
 </svg>

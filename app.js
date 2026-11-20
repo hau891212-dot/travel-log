@@ -224,6 +224,26 @@ function renderPrep() {
 }
 
 // ===== 行程 =====
+// kind：spot 景點行程 / flight 航班 / transit 交通（mode：train ferry bus taxi walk）
+const MODE = { train: ['電車', 'train'], ferry: ['渡輪', 'ferry'], bus: ['巴士', 'bus'], taxi: ['計程車', 'taxi'], walk: ['步行', 'walk'] };
+const kindOf = p => p.kind || 'spot';
+const isMove = p => kindOf(p) !== 'spot';
+const routeText = p => [p.from, p.to].filter(Boolean).join(' → ');
+const planTitle = p => p.title || routeText(p) || (kindOf(p) === 'flight' ? '航班' : (MODE[p.mode] || MODE.train)[0]);
+const kindIcon = p => kindOf(p) === 'flight' ? 'plane' : kindOf(p) === 'transit' ? (MODE[p.mode] || MODE.train)[1] : 'pin';
+
+function setPlanKind(kind) {
+  const form = $('#planForm');
+  form.className = form.className.replace(/kind-\w+/, 'kind-' + kind);
+  $$('[data-k]', form).forEach(el => {
+    const on = el.dataset.k.split(' ').includes(kind);
+    el.hidden = !on; el.disabled = !on;
+  });
+  const ph = { spot: ['開始', '結束'], flight: ['起飛', '抵達'], transit: ['出發', '抵達'] }[kind];
+  form.elements.start.title = ph[0]; form.elements.end.title = ph[1];
+  form.elements.code.placeholder = kind === 'flight' ? '航班號，例如 BX794' : '班次 / 路線（選填）';
+}
+$('#planForm').addEventListener('change', e => { if (e.target.name === 'kind') setPlanKind(e.target.value); });
 function setPlanEditing(on) {
   $('#planFormTitle').textContent = on ? '編輯行程' : '新增行程';
   $('#planSubmit').textContent = on ? '更新行程' : '新增行程';
@@ -235,6 +255,9 @@ function resetPlanForm(keep = {}) {
   form.reset();
   el.id.value = '';
   el.date.value = keep.date || trip().start || todayStr();
+  const kind = keep.kind || 'spot';
+  form.querySelector(`[name=kind][value=${kind}]`).checked = true;
+  setPlanKind(kind);
   if (keep.city !== undefined) el.city.value = keep.city;
   setPlanEditing(false);
 }
@@ -242,26 +265,38 @@ $('#planForm').addEventListener('submit', e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
   const t = trip();
+  for (const k of ['title', 'place', 'from', 'to', 'code', 'note']) if (typeof f[k] === 'string') f[k] = f[k].trim();
+  if (f.kind !== 'spot' && !f.from && !f.to) return toast('請填出發地或目的地');
   if (f.end && f.end < f.start && !confirm('結束時間比開始早（跨午夜）？確定要儲存嗎？')) return;
-  if (f.id) Object.assign(t.plan.find(x => x.id === f.id), f);
-  else t.plan.push({ ...f, id: uid() });
+  // 依類型清掉不用的欄位
+  const rec = { kind: f.kind, date: f.date, start: f.start, end: f.end || '', note: f.note || '' };
+  if (f.kind === 'spot') Object.assign(rec, { city: f.city, title: f.title, place: f.place || '' });
+  else Object.assign(rec, { from: f.from, to: f.to, code: (f.code || '').toUpperCase(), title: '', place: '',
+    city: f.kind === 'flight' ? 'move' : f.city, ...(f.kind === 'transit' ? { mode: f.mode } : {}) });
+  if (f.id) { const p = t.plan.find(x => x.id === f.id); for (const k of Object.keys(p)) if (k !== 'id') delete p[k]; Object.assign(p, rec); }
+  else t.plan.push({ ...rec, id: uid() });
   save();
-  toast(f.id ? '行程已更新' : `已加入 ${fmtDate(f.date)} ${esc(f.title)}`);
-  resetPlanForm({ date: f.date, city: f.city });
+  toast(f.id ? '行程已更新' : `已加入 ${fmtDate(f.date)} ${esc(planTitle(rec))}`);
+  resetPlanForm({ date: f.date, city: f.city, kind: f.kind });
   render();
 });
 $('#planCancel').addEventListener('click', () => resetPlanForm());
 
 function editPlan(id) {
-  const p = trip().plan.find(x => x.id === id), el = $('#planForm').elements;
-  for (const k of ['city', 'date', 'start', 'end', 'title', 'place', 'note', 'id']) el[k].value = p[k] || '';
+  const p = trip().plan.find(x => x.id === id), form = $('#planForm'), el = form.elements;
+  const kind = kindOf(p);
+  form.querySelector(`[name=kind][value=${kind}]`).checked = true;
+  setPlanKind(kind);
+  for (const k of ['city', 'date', 'start', 'end', 'title', 'place', 'note', 'from', 'to', 'code', 'id']) el[k].value = p[k] || '';
+  el.mode.value = p.mode || 'train';
   setPlanEditing(true);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function planClick(e) {
   const id = e.target.closest('[data-id]')?.dataset.id; if (!id) return;
   if (e.target.matches('.del')) {
-    removeWithUndo('plan', id, trip().plan.find(x => x.id === id)?.title);
+    const p = trip().plan.find(x => x.id === id);
+    removeWithUndo('plan', id, p && planTitle(p));
   } else if (e.target.matches('.edit')) {
     if (!$('#tab-plan').classList.contains('active')) goTab('plan');
     editPlan(id);
@@ -273,6 +308,12 @@ $('#dayChips').addEventListener('click', e => {
   const d = e.target.closest('[data-day]')?.dataset.day;
   if (d) scrollToEl(document.getElementById('day-' + d));
 });
+let planView = (() => { try { return localStorage.getItem('tl-plan-view') || 'all'; } catch { return 'all'; } })();
+$('#planFilter').addEventListener('click', e => {
+  const v = e.target.closest('[data-view]')?.dataset.view; if (!v) return;
+  planView = v; try { localStorage.setItem('tl-plan-view', v); } catch {}
+  renderPlan();
+});
 
 const sortedPlan = () => [...trip().plan].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 const mapLink = place => place
@@ -281,38 +322,70 @@ const mapLink = place => place
 const naverLink = p => p.city === 'busan' && p.place
   ? ` <a class="mini" href="https://map.naver.com/p/search/${encodeURIComponent(p.place)}" target="_blank" rel="noopener">Naver</a>` : '';
 
+const planBtns = `<div class="btns">
+      <button class="icon edit" title="編輯">${ic('pencil')}</button>
+      <button class="icon del" title="刪除">${ic('x')}</button>
+    </div>`;
 function planItem(p, cls = '') {
-  return `<div class="item ${cls} city-${p.city || 'none'}" data-id="${p.id}">
+  const kind = kindOf(p);
+  if (kind === 'flight') {
+    return `<div class="item flight ${cls}" data-id="${p.id}">
+      <div class="fl-top"><span class="fl-tag">${ic('plane')} FLIGHT</span>${p.code ? `<b class="fl-code">${esc(p.code)}</b>` : ''}</div>
+      <div class="fl-route">
+        <div class="fl-pt"><span class="fl-city">${esc(p.from || '—')}</span><span class="fl-time">${esc(p.start)}</span></div>
+        <div class="fl-path">${ic('plane')}</div>
+        <div class="fl-pt r"><span class="fl-city">${esc(p.to || '—')}</span><span class="fl-time">${esc(p.end || '')}</span></div>
+      </div>
+      ${p.note ? `<div class="sub">${esc(p.note)}</div>` : ''}
+      ${planBtns}
+    </div>`;
+  }
+  if (kind === 'transit') {
+    const [mName, mIc] = MODE[p.mode] || MODE.train;
+    return `<div class="item transit ${cls}" data-id="${p.id}">
+      <div class="time">${esc(p.start)}${p.end ? `<small>${esc(p.end)}</small>` : ''}</div>
+      <span class="tr-ic">${ic(mIc)}</span>
+      <div class="main">
+        <div class="title">${esc(routeText(p) || mName)}</div>
+        <div class="sub"><span class="tag soft">${mName}${p.code ? ' · ' + esc(p.code) : ''}</span>${p.note ? esc(p.note) : ''}</div>
+      </div>
+      ${planBtns}
+    </div>`;
+  }
+  return `<div class="item spot ${cls} city-${p.city || 'none'}" data-id="${p.id}">
     <div class="time">${esc(p.start)}${p.end ? `<small>${esc(p.end)}</small>` : ''}</div>
     <div class="main">
       <div class="title">${cityTag(p.city)}${esc(p.title)}</div>
       <div class="sub">${mapLink(p.place)}${naverLink(p)}${p.note ? ' ' + esc(p.note) : ''}</div>
     </div>
-    <div class="btns">
-      <button class="icon edit" title="編輯">${ic('pencil')}</button>
-      <button class="icon del" title="刪除">${ic('x')}</button>
-    </div>
+    ${planBtns}
   </div>`;
 }
 
 function renderPlan() {
+  const all = sortedPlan();
+  const nMove = all.filter(isMove).length, nSpot = all.length - nMove;
+  $('#planFilter').innerHTML = all.length ? [['all', '全部', all.length, 'map'], ['spot', '景點', nSpot, 'pin'], ['move', '航班・交通', nMove, 'plane']]
+    .map(([v, l, n, i]) => `<button type="button" data-view="${v}" class="${planView === v ? 'on' : ''}">${ic(i)}${l}<small>${n}</small></button>`).join('') : '';
+  const list = all.filter(p => planView === 'all' || (planView === 'move') === isMove(p));
   const byDay = {};
-  sortedPlan().forEach(p => (byDay[p.date] ||= []).push(p));
+  list.forEach(p => (byDay[p.date] ||= []).push(p));
   const days = Object.keys(byDay), start = trip().start, today = todayStr();
   const dayNo = d => start ? dayDiff(d, start) + 1 : 0;
   $('#dayChips').innerHTML = days.length > 1 ? days.map(d =>
     `<button type="button" class="chip ${d === today ? 'on' : ''}" data-day="${d}">${dayNo(d) > 0 ? `D${dayNo(d)} ` : ''}${fmtDate(d).replace(/（.）/, '')}</button>`).join('') : '';
   $('#planList').innerHTML = days.map(d => {
-    const n = dayNo(d);
-    const cities = [...new Set(byDay[d].map(p => p.city).filter(c => CITY[c]))];
+    const n = dayNo(d), items = byDay[d];
+    const cities = [...new Set(items.map(p => p.city).filter(c => c && c !== 'move' && CITY[c]))];
+    const s = items.filter(p => !isMove(p)).length, m = items.length - s;
     return `<div class="day-head" id="day-${d}">
         <span class="day-badge">${n > 0 ? `Day ${n}` : ic('calendar')}</span>
         <span>${fmtDate(d)}</span>
         ${cities.map(c => `<span class="stamp ${c}">${CITY[c].name}</span>`).join('')}
-        <span class="muted count">${byDay[d].length} 站</span>
+        <span class="muted count">${[s && `${s} 站`, m && `${m} 段交通`].filter(Boolean).join('・')}</span>
       </div>
-      <div class="timeline">${byDay[d].map(p => planItem(p)).join('')}</div>`;
-  }).join('') || empty('還沒有行程～<br>從上面加入第一站吧！', 'torii');
+      <div class="timeline">${items.map(p => planItem(p)).join('')}</div>`;
+  }).join('') || (all.length ? empty('這個分類還沒有東西', 'compass') : empty('還沒有行程～<br>從上面加入第一站吧！', 'torii'));
 }
 
 // ===== 即時行程 =====
@@ -357,6 +430,12 @@ function pass({ label, title, sub = '', extra = '', city = '', stubTop, stubMid,
   </div>`;
 }
 
+function stubOf(p) {
+  if (kindOf(p) === 'flight') return { stubTop: ic('plane'), stubMid: '航班' };
+  if (kindOf(p) === 'transit') { const [n, i] = MODE[p.mode] || MODE.train; return { stubTop: ic(i), stubMid: n }; }
+  const c = CITY[p.city];
+  return { stubTop: c ? c.flag : ic('pin'), stubMid: c ? c.name : '行程' };
+}
 function renderLive() {
   const now = new Date(), t = trip(), today = todayStr(now);
   $('#clock').innerHTML = `${ic('clock')} ${fmtDate(today)} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -375,25 +454,23 @@ function renderLive() {
     html += `<div class="trip-day">${ic('map')} 旅程第 <b>${dayDiff(today, t.start) + 1}</b> 天・共 ${dayDiff(t.end, t.start) + 1} 天</div>`;
   }
   if (current) {
-    const c = CITY[current.city];
     const total = Math.max(1, endOf(current, todays.indexOf(current)) - toMin(current.start));
     const pct = Math.min(100, (nowMin - toMin(current.start)) / total * 100);
     html += pass({
-      cls: 'now', city: current.city,
-      label: '<span class="live-dot"></span>NOW · 正在進行', title: esc(current.title),
-      sub: `${esc(current.start)}${current.end ? '–' + esc(current.end) : ''}　${mapLink(current.place)}${naverLink(current)}`,
+      cls: 'now ' + kindOf(current), city: current.city,
+      label: `<span class="live-dot"></span>NOW · ${isMove(current) ? '移動中' : '正在進行'}`, title: esc(planTitle(current)),
+      sub: `${esc(current.start)}${current.end ? '–' + esc(current.end) : ''}　${current.code ? esc(current.code) + ' ' : ''}${mapLink(current.place)}${naverLink(current)}`,
       extra: `${current.note ? `<div>${esc(current.note)}</div>` : ''}<div class="progress"><div style="width:${pct}%"></div></div>`,
-      stubTop: c ? c.flag : ic('pin'), stubMid: c ? c.name : '行程', stubBot: esc(current.start),
+      ...stubOf(current), stubBot: esc(current.start),
     });
   }
   if (next) {
-    const c = CITY[next.city];
     html += pass({
-      city: next.city,
-      label: 'NEXT · 下一站', title: esc(next.title),
-      sub: `${fmtDate(next.date)} ${esc(next.start)}　${mapLink(next.place)}${naverLink(next)}`,
+      city: next.city, cls: kindOf(next),
+      label: `NEXT · ${kindOf(next) === 'flight' ? '下一班飛機' : isMove(next) ? '下一段交通' : '下一站'}`, title: esc(planTitle(next)),
+      sub: `${fmtDate(next.date)} ${esc(next.start)}　${next.code ? esc(next.code) + ' ' : ''}${mapLink(next.place)}${naverLink(next)}`,
       extra: `<div class="countdown">${ic('hourglass')} ${countdown(next, now)}</div>`,
-      stubTop: c ? c.flag : ic('pin'), stubMid: c ? c.name : '行程', stubBot: esc(next.start),
+      ...stubOf(next), stubBot: esc(next.start),
     });
   }
   $('#liveBox').innerHTML = html || empty('目前沒有進行中或即將到來的行程<br>去「行程」排一下吧！', 'camera');
@@ -545,6 +622,12 @@ function renderMoney() {
 }
 
 // ===== 結算 =====
+// 這位成員的費用由誰負擔（只認一層、對方存在且自己付）
+function sponsorOf(id) {
+  const t = trip(), m = t.members.find(x => x.id === id);
+  const s = m?.payBy && t.members.find(x => x.id === m.payBy);
+  return s && s.id !== id && !s.payBy ? s.id : null;
+}
 function computeSettle() {
   const t = trip();
   const P = Object.fromEntries(t.members.map(m => [m.id, { paid: 0, share: 0, recv: 0, recvShare: 0 }]));
@@ -560,6 +643,17 @@ function computeSettle() {
       if (P[r.payer]) P[r.payer].paid += amt;
       r.split.forEach(id => P[id] && (P[id].share += each));
     }
+  }
+  // 自己的花費（顯示用）
+  for (const p of Object.values(P)) { p.own = p.share - p.recvShare; p.covers = []; p.bear = p.own; }
+  // 由別人負擔：整筆帳（付出、分攤、收入）併到負擔者身上
+  for (const m of t.members) {
+    const s = sponsorOf(m.id);
+    if (!s) continue;
+    const a = P[m.id], b = P[s];
+    b.paid += a.paid; b.share += a.share; b.recv += a.recv; b.recvShare += a.recvShare;
+    b.bear += a.own; b.covers.push(m.id);
+    a.coveredBy = s; a.paid = a.share = a.recv = a.recvShare = 0;
   }
   // balance > 0：別人欠他；< 0：他要付錢
   for (const p of Object.values(P)) p.balance = (p.paid - p.share) - (p.recv - p.recvShare);
@@ -603,14 +697,20 @@ function renderSettle() {
 
   $('#personTable').innerHTML = t.members.length ? `<div class="people">${t.members.map(m => {
     const p = P[m.id], b = p.balance;
+    if (p.coveredBy) return `<div class="person covered">
+      <div class="person-head"><span class="person-name">${esc(m.name)}</span>
+        <span class="person-net">${money(p.own)}</span></div>
+      <span class="badge soft">${ic('heart')} 由 ${esc(memberName(p.coveredBy))} 負擔</span>
+    </div>`;
     const badge = b >= 1 ? `<span class="badge pos">應收 ${money(b)}</span>`
       : b <= -1 ? `<span class="badge neg">應付 ${money(-b)}</span>` : `<span class="badge">${ic('check')} 已平衡</span>`;
     return `<div class="person">
-      <div class="person-head"><span class="person-name">${esc(m.name)}</span>
-        <span class="person-net">${money(p.share - p.recvShare)}</span></div>
+      <div class="person-head"><span class="person-name">${esc(m.name)}${p.covers.length ? `<small class="muted"> 負擔 ${p.covers.length + 1} 人份</small>` : ''}</span>
+        <span class="person-net">${money(p.bear)}</span></div>
       <div class="person-rows">
         <span>實際付出<b>${money(p.paid)}</b></span><span>應分攤<b>${money(p.share)}</b></span>
         ${p.recv || p.recvShare ? `<span>代收<b>${money(p.recv)}</b></span><span>應得退款<b>${money(p.recvShare)}</b></span>` : ''}
+        ${p.covers.length ? `<span>自己<b>${money(p.own)}</b></span>${p.covers.map(id => `<span>含 ${esc(memberName(id))}<b>${money(P[id].own)}</b></span>`).join('')}` : ''}
       </div>
       ${badge}
     </div>`;
@@ -653,7 +753,11 @@ function settleText() {
   const t = trip(), { P, expense, income, transfers } = computeSettle();
   const net = expense - income;
   const lines = [`【${t.name}】旅費結算`, `淨花費 ${money(net)}（平均每人 ${money(net / (t.members.length || 1))}）`, '', '— 每人花費 —'];
-  t.members.forEach(m => lines.push(`${m.name}：${money(P[m.id].share - P[m.id].recvShare)}（付了 ${money(P[m.id].paid)}）`));
+  t.members.forEach(m => {
+    const p = P[m.id];
+    lines.push(p.coveredBy ? `${m.name}：${money(p.own)}（由 ${memberName(p.coveredBy)} 負擔）`
+      : `${m.name}：${money(p.bear)}${p.covers.length ? `（含 ${p.covers.map(memberName).join('、')} 的份）` : ''}，付了 ${money(p.paid)}`);
+  });
   lines.push('', '— 轉帳 —');
   if (transfers.length) transfers.forEach(x => lines.push(`${memberName(x.from)} → ${memberName(x.to)}：${money(x.amt)}`));
   else lines.push('大家都打平了！');
@@ -785,9 +889,18 @@ $('#memberForm').addEventListener('submit', e => {
   trip().members.push({ id: uid(), name });
   e.target.reset(); save(); render();
 });
+$('#memberList').addEventListener('change', e => {
+  if (!e.target.matches('.pay-by')) return;
+  const id = e.target.closest('[data-id]').dataset.id, m = trip().members.find(x => x.id === id);
+  if (e.target.value) m.payBy = e.target.value; else delete m.payBy;
+  save(); render();
+  toast(m.payBy ? `${esc(m.name)} 的費用改由 ${esc(memberName(m.payBy))} 負擔` : `${esc(m.name)} 改回自己付`);
+});
 $('#memberList').addEventListener('click', e => {
   if (!e.target.matches('.del')) return;
   const id = e.target.closest('[data-id]').dataset.id, t = trip();
+  if (t.members.some(m => m.payBy === id))
+    return toast('有人的費用由這位成員負擔，請先改掉');
   if (t.money.some(r => r.payer === id || r.split.includes(id)))
     return toast('這位成員有記帳紀錄，請先修改或刪除相關紀錄');
   removeWithUndo('members', id, memberName(id));
@@ -820,9 +933,18 @@ function renderSettings() {
   const t = trip(), el = $('#tripForm').elements;
   if (!$('#tripForm').contains(document.activeElement))
     for (const k of ['name', 'currency', 'start', 'end', 'budget']) el[k].value = t[k] || '';
-  $('#memberList').innerHTML = t.members.map(m =>
-    `<span class="chip" data-id="${m.id}">${esc(m.name)}<button class="icon del" title="刪除">${ic('x')}</button></span>`).join('')
-    || '<span class="muted">尚無成員</span>';
+  $('#memberList').innerHTML = t.members.map(m => {
+    const others = t.members.filter(x => x.id !== m.id && !x.payBy);
+    const sponsored = t.members.some(x => x.payBy === m.id);
+    return `<div class="member-row" data-id="${m.id}">
+      <span class="member-name">${ic('user')}${esc(m.name)}</span>
+      <select class="pay-by" title="費用由誰負擔" ${sponsored ? 'disabled' : ''}>
+        <option value="">自己付</option>
+        ${others.map(x => `<option value="${x.id}" ${m.payBy === x.id ? 'selected' : ''}>由 ${esc(x.name)} 負擔</option>`).join('')}
+      </select>
+      <button class="icon del" title="刪除">${ic('x')}</button>
+    </div>`;
+  }).join('') || '<span class="muted">尚無成員</span>';
   renderBookings(); renderRates();
 }
 
@@ -862,7 +984,7 @@ navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261120142438';
+const APP_VERSION = '20261120174402';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
