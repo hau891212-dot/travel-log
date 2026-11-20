@@ -45,9 +45,10 @@ if (!db || !db.trips?.length) {
 }
 db.trips.forEach(migrate);
 
-function save() {
+function save(fromCloud = false) {
   try { localStorage.setItem(KEY, JSON.stringify(db)); }
   catch { toast('儲存失敗：手機空間不足或在無痕模式'); }
+  if (!fromCloud && typeof cloudDirty === 'function') cloudDirty();
 }
 const trip = () => db.trips.find(t => t.id === db.current) || db.trips[0];
 const memberName = id => trip().members.find(m => m.id === id)?.name ?? '（已刪除）';
@@ -916,7 +917,7 @@ $('#importFile').addEventListener('change', async e => {
     const data = JSON.parse(await file.text());
     const list = Array.isArray(data.trips) ? data.trips : [data];
     if (!list.length || !list.every(t => t && Array.isArray(t.members) && Array.isArray(t.money))) throw 0;
-    list.forEach(t => { t.id = uid(); migrate(t); db.trips.push(t); });
+    list.forEach(t => { t.id = uid(); delete t.sync; migrate(t); db.trips.push(t); });
     db.current = list[list.length - 1].id;
     save(); resetForms(); render(); toast(`已匯入 ${list.length} 個旅程`);
   } catch { toast('檔案格式不正確'); }
@@ -924,6 +925,8 @@ $('#importFile').addEventListener('change', async e => {
 });
 $('#deleteTripBtn').addEventListener('click', () => {
   if (!confirm(`確定刪除「${trip().name}」？此動作無法復原，建議先匯出備份。`)) return;
+  const gone = trip();
+  if (gone.sync) cloudStop(gone, true);
   db.trips = db.trips.filter(t => t.id !== db.current);
   if (!db.trips.length) db.trips.push(newTrip());
   db.current = db.trips[0].id; save(); resetForms(); render();
@@ -971,6 +974,7 @@ function render() {
     const boxes = $$('#splitBox input');
     renderSplitBox(boxes.length === t.members.length && boxes.length ? boxes.filter(i => i.checked).map(i => i.value) : null);
   }
+  renderCloud();
   renderLive(); renderPrep(); renderPlan(); renderMoney(); renderSettle(); renderSettings(); renderConverter();
 }
 function resetForms() {
@@ -979,12 +983,267 @@ function resetForms() {
   render(); resetMoneyForm();
 }
 
+// ===== 雲端同步（Firebase Firestore）=====
+// 每個同步中的旅程存成 trips/{分享碼}：{ trip, rev, by, at }。知道分享碼的人才能讀寫。
+// 同時有人修改時用三方合併（上次同步的版本 / 我的 / 雲端的），以項目 id 為單位，不會整份覆蓋。
+const FB_CONFIG = {
+  apiKey: 'AIzaSyDeL1DzRbW0NwGoH2vhMEuunitqNkOuMp8',
+  authDomain: 'travel-log-hkj5c.firebaseapp.com',
+  projectId: 'travel-log-hkj5c',
+  storageBucket: 'travel-log-hkj5c.firebasestorage.app',
+  messagingSenderId: '1034924162124',
+  appId: '1:1034924162124:web:111b6fa91e642e29c908e9',
+};
+const FB_VER = '11.0.2';
+const DEVICE = (() => {
+  try { let d = localStorage.getItem('tl-device'); if (!d) localStorage.setItem('tl-device', d = uid() + uid()); return d; }
+  catch { return uid(); }
+})();
+db.sync ||= {}; // { 分享碼: { base: 上次同步的 JSON, rev } }
+const cloud = { fs: null, loading: null, subs: {}, state: {}, timer: null };
+const J = o => JSON.stringify(o);
+const plain = o => JSON.parse(J(o)); // 去掉 undefined，Firestore 不收
+const tripData = t => { const c = plain(t); delete c.sync; return c; };
+
+function newCode() {
+  const A = 'abcdefghijkmnpqrstuvwxyz23456789', b = crypto.getRandomValues(new Uint8Array(24));
+  return [...b].map(x => A[x % A.length]).join('');
+}
+function parseCode(s) {
+  s = (s || '').trim();
+  const m = s.match(/[?&]join=([a-z0-9]+)/i);
+  return (m ? m[1] : s).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+const shareLink = code => `${location.origin}${location.pathname}?join=${code}`;
+
+async function fb() {
+  if (cloud.fs) return cloud.fs;
+  cloud.loading ||= (async () => {
+    const base = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
+    const { initializeApp } = await import(base + 'firebase-app.js');
+    const F = await import(base + 'firebase-firestore.js');
+    const app = initializeApp(FB_CONFIG);
+    cloud.fs = { F, store: F.getFirestore(app) };
+    return cloud.fs;
+  })().catch(e => { cloud.loading = null; throw e; });
+  return cloud.loading;
+}
+
+// 三方合併：b 上次同步、l 本機、r 雲端
+function merge3(b, l, r) {
+  const jl = J(l), jr = J(r);
+  if (jl === jr) return l;
+  if (b !== undefined && jl === J(b)) return r;
+  if (b !== undefined && jr === J(b)) return l;
+  const isObjArr = a => Array.isArray(a) && a.every(x => x && typeof x === 'object' && 'id' in x);
+  if (isObjArr(l) && isObjArr(r)) {
+    const byId = a => new Map((isObjArr(a) ? a : []).map(x => [x.id, x]));
+    const B = byId(b), L = byId(l), R = byId(r), out = [];
+    const ids = [...new Set([...r.map(x => x.id), ...l.map(x => x.id)])];
+    for (const id of ids) {
+      const bi = B.get(id), li = L.get(id), ri = R.get(id);
+      if (li && ri) out.push(merge3(bi, li, ri));
+      else if (ri) { if (!bi || J(ri) !== J(bi)) out.push(ri); }      // 本機刪掉了，但雲端沒改過就跟著刪
+      else if (li) { if (!bi || J(li) !== J(bi)) out.push(li); }
+    }
+    return out;
+  }
+  const isObj = o => o && typeof o === 'object' && !Array.isArray(o);
+  if (isObj(l) && isObj(r)) {
+    const out = {}, bo = isObj(b) ? b : {};
+    for (const k of new Set([...Object.keys(r), ...Object.keys(l)])) {
+      if (!(k in l)) { if (!(k in bo) || J(r[k]) !== J(bo[k])) out[k] = r[k]; continue; }
+      if (!(k in r)) { if (!(k in bo) || J(l[k]) !== J(bo[k])) out[k] = l[k]; continue; }
+      out[k] = merge3(bo[k], l[k], r[k]);
+    }
+    return out;
+  }
+  return l; // 同一個欄位兩邊都改：以本機為準
+}
+
+function setCloudState(code, st) { cloud.state[code] = { ...cloud.state[code], ...st }; renderCloud(); }
+function applyRemote(t, data) {
+  const keep = { id: t.id, sync: t.sync };
+  for (const k of Object.keys(t)) delete t[k];
+  Object.assign(t, migrate(plain(data)), keep);
+}
+
+function cloudListen(t) {
+  const code = t.sync;
+  if (!code || cloud.subs[code]) return;
+  cloud.subs[code] = 'pending';
+  fb().then(({ F, store }) => {
+    if (cloud.subs[code] !== 'pending') return;
+    cloud.subs[code] = F.onSnapshot(F.doc(store, 'trips', code), snap => {
+      const t2 = db.trips.find(x => x.sync === code); if (!t2) return;
+      if (!snap.exists()) return setCloudState(code, { status: 'missing' });
+      const d = snap.data(), s = db.sync[code] ||= {};
+      if (d.rev === s.rev) return setCloudState(code, { status: 'ok', at: d.at });
+      const local = tripData(t2), base = s.base ? JSON.parse(s.base) : undefined;
+      const merged = merge3(base, local, d.trip);
+      s.base = J(d.trip); s.rev = d.rev;
+      if (J(merged) !== J(local)) {
+        applyRemote(t2, merged); save(true);
+        if (t2.id === trip().id) { render(); if (d.by !== DEVICE) toast('旅伴更新了資料'); }
+      } else save(true);
+      if (J(merged) !== J(d.trip)) cloudDirty(); // 本機還有沒上傳的修改
+      setCloudState(code, { status: 'ok', at: d.at });
+    }, () => setCloudState(code, { status: 'error' }));
+  }).catch(() => { delete cloud.subs[code]; setCloudState(code, { status: 'offline' }); });
+}
+function cloudUnlisten(code) {
+  const u = cloud.subs[code];
+  if (typeof u === 'function') u();
+  delete cloud.subs[code];
+}
+
+function cloudDirty() {
+  if (!db.trips.some(t => t.sync)) return;
+  clearTimeout(cloud.timer);
+  cloud.timer = setTimeout(cloudPushAll, 900);
+}
+async function cloudPushAll() {
+  for (const t of db.trips) if (t.sync) {
+    const s = db.sync[t.sync] ||= {};
+    if (s.base && J(tripData(t)) === s.base) continue;
+    await cloudPush(t).catch(() => {});
+  }
+}
+async function cloudPush(t) {
+  const code = t.sync;
+  setCloudState(code, { status: 'saving' });
+  try {
+    const { F, store } = await fb();
+    const ref = F.doc(store, 'trips', code), s = db.sync[code] ||= {};
+    const result = await F.runTransaction(store, async tx => {
+      const snap = await tx.get(ref);
+      let data = tripData(t), rev = 1;
+      if (snap.exists()) {
+        const d = snap.data();
+        rev = (d.rev || 0) + 1;
+        if (d.rev !== s.rev) data = merge3(s.base ? JSON.parse(s.base) : undefined, data, d.trip);
+      }
+      const at = Date.now();
+      tx.set(ref, { trip: data, rev, by: DEVICE, at });
+      return { data, rev, at };
+    });
+    s.base = J(result.data); s.rev = result.rev;
+    if (J(result.data) !== J(tripData(t))) { applyRemote(t, result.data); if (t.id === trip().id) render(); }
+    save(true);
+    setCloudState(code, { status: 'ok', at: result.at });
+  } catch (e) {
+    setCloudState(code, { status: navigator.onLine ? 'error' : 'offline' });
+    throw e;
+  }
+}
+
+async function cloudStart() {
+  const t = trip();
+  if (t.sync) return;
+  t.sync = newCode();
+  db.sync[t.sync] = {};
+  save(true); renderCloud();
+  try {
+    await cloudPush(t);
+    cloudListen(t);
+    toast('已開啟雲端同步，把分享碼傳給旅伴吧！');
+  } catch {
+    delete db.sync[t.sync]; delete t.sync; save(true); renderCloud();
+    toast('連不上雲端，請確認網路後再試一次');
+  }
+}
+function cloudStop(t = trip(), silent = false) {
+  if (!t.sync) return;
+  if (!silent && !confirm('停止後這支手機不再和雲端同步（雲端和旅伴的資料不會被刪除）。確定嗎？')) return;
+  cloudUnlisten(t.sync);
+  delete db.sync[t.sync]; delete t.sync;
+  save(true); renderCloud();
+  if (!silent) toast('已停止同步');
+}
+async function cloudJoin(raw) {
+  const code = parseCode(raw);
+  if (code.length < 20) return toast('分享碼不正確');
+  const exist = db.trips.find(t => t.sync === code);
+  if (exist) { db.current = exist.id; save(true); resetForms(); return toast('這個旅程已經在手機裡了'); }
+  toast('連線中…');
+  try {
+    const { F, store } = await fb();
+    const snap = await F.getDoc(F.doc(store, 'trips', code));
+    if (!snap.exists()) return toast('找不到這個旅程，請確認分享碼');
+    const d = snap.data(), data = migrate(plain(d.trip));
+    const same = db.trips.find(t => t.id === data.id);
+    if (same && !confirm(`手機裡已經有「${same.name}」，要用雲端的版本取代嗎？`)) return;
+    if (same) db.trips = db.trips.filter(t => t !== same);
+    data.sync = code;
+    db.trips.push(data); db.current = data.id;
+    db.sync[code] = { base: J(d.trip), rev: d.rev };
+    save(true); resetForms(); cloudListen(data);
+    toast(`已加入「${esc(data.name)}」`);
+  } catch { toast('連不上雲端，請確認網路後再試一次'); }
+}
+
+const timeAgo = ms => {
+  if (!ms) return '';
+  const m = Math.round((Date.now() - ms) / 6e4);
+  return m < 1 ? '剛剛' : m < 60 ? `${m} 分鐘前` : m < 1440 ? `${Math.round(m / 60)} 小時前` : fmtDate(todayStr(new Date(ms)));
+};
+const CLOUD_TEXT = { ok: '已同步', saving: '同步中…', offline: '離線中，有網路時會自動同步', error: '同步失敗，稍後自動重試', missing: '雲端找不到這個旅程' };
+function renderCloud() {
+  const t = trip(), box = $('#cloudBox'), badge = $('#syncBadge');
+  if (!box) return;
+  const st = t.sync ? (cloud.state[t.sync] || { status: 'saving' }) : null;
+  badge.hidden = !t.sync;
+  if (st) {
+    badge.className = 'sync-badge ' + st.status;
+    badge.innerHTML = `${ic(st.status === 'ok' || st.status === 'saving' ? 'cloud' : 'cloud-off')}${st.status === 'ok' ? '已同步' : st.status === 'saving' ? '同步中' : '未同步'}`;
+  }
+  box.innerHTML = t.sync ? `
+    <div class="cloud-head">${ic('cloud')}<b>「${esc(t.name)}」雲端同步中</b></div>
+    <div class="cloud-status ${st.status}">${CLOUD_TEXT[st.status] || ''}${st.status === 'ok' && st.at ? `・${timeAgo(st.at)}更新` : ''}</div>
+    <div class="lbl">分享碼（給旅伴，對方在下面「加入旅程」貼上）</div>
+    <button type="button" class="code cloud-code" data-act="copy">${ic('copy')}${t.sync.slice(0, 4)}-${t.sync.slice(4, 8)}…</button>
+    <div class="actions">
+      <button type="button" data-act="share">${ic('share')} 傳給旅伴</button>
+      <button type="button" class="ghost" data-act="stop">停止同步</button>
+    </div>
+    <p class="muted small">拿到分享碼的人都能看和修改這趟旅程，只傳給一起去的人。</p>`
+  : `
+    <div class="cloud-head">${ic('cloud-off')}<b>「${esc(t.name)}」目前只存在這支手機</b></div>
+    <p class="muted small">開啟後資料會存到雲端：換手機不會不見，旅伴也能一起看行程、一起記帳，誰改了大家都會即時更新。</p>
+    <button type="button" class="wide" data-act="start">${ic('cloud')} 開啟雲端同步</button>`;
+}
+$('#cloudBox').addEventListener('click', e => {
+  const act = e.target.closest('[data-act]')?.dataset.act, t = trip();
+  if (act === 'start') cloudStart();
+  else if (act === 'stop') cloudStop();
+  else if (act === 'copy') copyText(shareLink(t.sync), '已複製分享連結');
+  else if (act === 'share') shareText(`一起用旅遊手帳看「${t.name}」的行程和帳本！\n打開這個連結就能加入：\n${shareLink(t.sync)}`, t.name);
+});
+$('#joinForm').addEventListener('submit', e => {
+  e.preventDefault();
+  cloudJoin(e.target.elements.code.value); e.target.reset();
+});
+$('#syncBadge').addEventListener('click', () => { goTab('settings'); setTimeout(() => scrollToEl($('#sec-cloud')), 350); });
+addEventListener('online', () => { db.trips.forEach(cloudListen); cloudDirty(); cloudPushAll(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) renderCloud(); });
+
+function cloudInit() {
+  db.trips.forEach(t => t.sync && cloudListen(t));
+  cloudPushAll();
+  const code = new URLSearchParams(location.search).get('join');
+  if (code) {
+    history.replaceState(null, '', location.pathname);
+    if (confirm('要加入旅伴分享的旅程嗎？')) cloudJoin(code);
+  }
+}
+
 resetForms();
+cloudInit();
 navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261120174402';
+const APP_VERSION = '20261120224608';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

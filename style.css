@@ -807,3 +807,28 @@ th { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); }
 .person.covered .person-net { color: var(--muted); font-size: 20px; }
 .badge.soft { background: color-mix(in srgb, var(--coral) 45%, var(--card)); }
 .person-name small { font-size: 13px; }
+
+/* ===== 雲端同步 ===== */
+.cloud { display: grid; gap: 8px; }
+.cloud-head { display: flex; align-items: center; gap: 6px; font-size: 17px; }
+.cloud-head .ic { width: 26px; height: 26px; }
+.cloud-head b { font-weight: 400; }
+.cloud .wide { margin: 4px 0 0; }
+.cloud p { margin: 0; }
+.cloud-status { font-size: 14px; color: var(--muted); }
+.cloud-status.ok { color: var(--pos); }
+.cloud-status.error, .cloud-status.missing { color: var(--neg); }
+.cloud-code { justify-self: start; margin-top: 0; }
+.cloud .lbl { margin: 4px 0 0; }
+.join { grid-template-columns: minmax(0, 1fr) auto; margin-top: 12px; }
+.join input[name=code] { grid-column: auto; }
+.join button { grid-column: auto; width: auto; }
+.trip-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.sync-badge {
+  min-height: 0; display: inline-flex; align-items: center; gap: 3px; padding: 0 9px 0 6px; font-size: 12px;
+  border: 1.5px solid var(--line); border-radius: 999px; box-shadow: none; background: var(--mint); color: var(--ink);
+}
+.sync-badge .ic { width: 16px; height: 16px; }
+.sync-badge.saving { background: var(--sky); }
+.sync-badge.offline, .sync-badge.error, .sync-badge.missing { background: var(--coral); }
+.sync-badge.saving .ic { animation: floaty 1.2s ease-in-out infinite; }

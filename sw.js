@@ -1,6 +1,6 @@
 // 離線快取：網路優先（略過瀏覽器 HTTP 快取），失敗時用快取（出國沒網路也能開）
 // CACHE 版本由 git pre-commit hook 自動更新，不用手動改
-const CACHE = 'travel-log-20261120174402';
+const CACHE = 'travel-log-20261120224608';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', e => {
@@ -30,6 +30,8 @@ self.addEventListener('fetch', e => {
   if (url.pathname.endsWith('/version.json')) return; // 版本檢查一律直連網路
 
   const sameOrigin = url.origin === location.origin;
+  // 只快取自己的檔案、字型和 Firebase 程式庫；Firestore 連線（串流）不要經過快取
+  if (!sameOrigin && !/(^|\.)gstatic\.com$|^fonts\.googleapis\.com$/.test(url.hostname)) return;
   const net = sameOrigin ? fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(req);
   e.respondWith(
     net.then(res => {
