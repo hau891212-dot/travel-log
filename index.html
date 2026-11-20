@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261120235122">
+<link rel="stylesheet" href="style.css?v=20261121003614">
 </head>
 <body>
 
@@ -251,7 +251,7 @@
   <button data-tab="prep"><svg class="ic"><use href="#ic-suitcase"/></svg>前置</button>
   <button data-tab="plan"><svg class="ic"><use href="#ic-map"/></svg>行程</button>
   <button data-tab="money"><svg class="ic"><use href="#ic-wallet"/></svg>記帳</button>
-  <button data-tab="settle"><svg class="ic"><use href="#ic-receipt"/></svg>結算</button>
+  <button data-tab="settle"><svg class="ic"><use href="#ic-receipt"/></svg>統計</button>
   <button data-tab="settings"><svg class="ic"><use href="#ic-gear"/></svg>更多</button>
 </nav>
 
@@ -353,11 +353,6 @@
       <label>付款方式
         <select name="pay"><option>現金</option><option>信用卡</option><option>交通卡</option><option>行動支付</option></select>
       </label>
-      <label class="full">付款 / 收款人<select name="payer" class="member-select" required></select></label>
-      <div class="full">
-        <span class="lbl">分攤成員 <button type="button" class="link" id="splitAll">全選 / 全不選</button></span>
-        <div id="splitBox" class="chips"></div>
-      </div>
       <input type="hidden" name="id">
       <div class="full actions">
         <button id="moneySubmit">儲存</button>
@@ -375,11 +370,7 @@
   <section id="tab-settle" class="tab">
     <div class="stats" id="settleStats"></div>
     <div id="budgetBox"></div>
-    <button type="button" class="wide" id="shareSettle"><svg class="ic"><use href="#ic-share"/></svg> 分享結算給旅伴</button>
-    <h3>每人費用</h3>
-    <div id="personTable"></div>
-    <h3>建議轉帳</h3>
-    <div id="transfers"></div>
+    <button type="button" class="wide" id="shareSettle"><svg class="ic"><use href="#ic-share"/></svg> 分享花費統計</button>
     <h3>分類統計</h3>
     <div id="catTable"></div>
     <h3>各幣別花費</h3>
@@ -450,7 +441,6 @@
       <input name="name" placeholder="成員名字" required>
       <button>新增成員</button>
     </form>
-    <p class="muted small hint">有人的費用由別人出（例如小孩、請客），在名字旁選「由 ○○ 負擔」，結算時就會算進那個人。</p>
     <div id="memberList" class="members"></div>
 
     <h3 id="sec-sos">緊急聯絡</h3>
@@ -507,6 +497,6 @@
 </div>
 <footer class="foot"><svg class="ic"><use href="#ic-plane"/></svg> 釜山 <svg class="ic"><use href="#ic-swap"/></svg> 福岡 <svg class="ic"><use href="#ic-ferry"/></svg><br>祝旅途愉快！</footer>
 
-<script src="app.js?v=20261120235122"></script>
+<script src="app.js?v=20261121003614"></script>
 </body>
 </html>

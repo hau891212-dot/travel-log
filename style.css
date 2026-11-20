@@ -973,3 +973,4 @@ th { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); }
 .g-step.on { opacity: 1; transform: scale(1.02); background: color-mix(in srgb, var(--yellow) 40%, var(--card)); border-style: solid; }
 .g-step.on .g-n { background: var(--red); color: #fff; }
 @media (prefers-reduced-motion: reduce) { .g-step { opacity: 1; } }
+.member-row { grid-template-columns: minmax(0, 1fr) auto; }

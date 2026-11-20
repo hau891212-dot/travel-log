@@ -512,20 +512,6 @@ $('#convAmt').addEventListener('input', renderConverter);
 $('#convCur').addEventListener('change', renderConverter);
 
 // ===== 記帳 =====
-function renderSplitBox(selected) {
-  const t = trip();
-  const sel = selected ?? t.members.map(m => m.id);
-  $('#splitBox').innerHTML = t.members.map(m => `
-    <label class="chip ${sel.includes(m.id) ? 'on' : ''}">
-      <input type="checkbox" value="${m.id}" ${sel.includes(m.id) ? 'checked' : ''}>${esc(m.name)}</label>`).join('')
-    || '<span class="muted">請先到「更多 → 成員」新增成員</span>';
-}
-$('#splitBox').addEventListener('change', e => e.target.closest('.chip').classList.toggle('on', e.target.checked));
-$('#splitAll').addEventListener('click', () => {
-  const boxes = $$('#splitBox input'), all = boxes.every(b => b.checked);
-  boxes.forEach(b => { b.checked = !all; b.closest('.chip').classList.toggle('on', !all); });
-});
-
 function updateAmtPreview() {
   const el = $('#moneyForm').elements, a = parseFloat(el.amount.value), cur = el.cur.value;
   $('#amtPreview').textContent = a && cur && cur !== base() ? `≈ ${money(a * rateOf(cur))}` : '';
@@ -549,8 +535,6 @@ function resetMoneyForm() {
   el.id.value = '';
   el.date.value = todayStr();
   el.cur.value = guessCur(todayStr());
-  if (db.lastPayer && trip().members.some(m => m.id === db.lastPayer)) el.payer.value = db.lastPayer;
-  renderSplitBox();
   setMoneyEditing(false); updateAmtPreview();
 }
 $('#moneyReset').addEventListener('click', resetMoneyForm);
@@ -558,22 +542,19 @@ $('#moneyReset').addEventListener('click', resetMoneyForm);
 $('#moneyForm').addEventListener('submit', e => {
   e.preventDefault();
   const el = e.target.elements, f = Object.fromEntries(new FormData(e.target));
-  const split = $$('#splitBox input:checked').map(i => i.value);
-  if (!trip().members.length) return toast('請先到「更多 → 成員」新增成員');
-  if (!split.length) return toast('請至少選一位分攤成員');
   const amount = parseFloat(f.amount);
   if (!(amount > 0)) return toast('金額要大於 0');
   const rec = { type: f.type, date: f.date, title: f.title.trim(), cat: f.cat, amount, cur: f.cur || base(),
-    pay: f.pay, payer: f.payer, split };
+    pay: f.pay };
   const t = trip();
-  if (f.id) Object.assign(t.money.find(x => x.id === f.id), rec);
+  if (f.id) Object.assign(t.money.find(x => x.id === f.id), rec); // 舊紀錄的付款人 / 分攤欄位保留不動
   else t.money.push({ id: uid(), ...rec });
-  db.lastCur = rec.cur; db.lastPayer = rec.payer;
+  db.lastCur = rec.cur;
   save();
   toast(f.id ? '已更新' : `已記下 ${esc(rec.title)} ${fmtCur(amount, rec.cur)}`);
   navigator.vibrate?.(15);
   if (f.id) resetMoneyForm();
-  else { // 連續記帳：保留日期、幣別、付款人、分攤，只清項目和金額
+  else { // 連續記帳：保留日期、幣別，只清項目和金額
     el.title.value = ''; el.amount.value = ''; el.type.value = 'expense'; updateAmtPreview();
   }
   render();
@@ -586,10 +567,9 @@ $('#moneyList').addEventListener('click', e => {
     removeWithUndo('money', id, r.title);
   } else if (e.target.matches('.edit')) {
     const el = $('#moneyForm').elements;
-    for (const k of ['type', 'date', 'title', 'cat', 'amount', 'payer', 'id']) el[k].value = r[k];
+    for (const k of ['type', 'date', 'title', 'cat', 'amount', 'id']) el[k].value = r[k];
     el.cur.value = r.cur || base();
     el.pay.value = r.pay || '現金';
-    renderSplitBox(r.split);
     setMoneyEditing(true); updateAmtPreview();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -619,9 +599,7 @@ function renderMoney() {
         return `<div class="item" data-id="${r.id}">
           <div class="main">
             <div class="title">${catIc(r.cat)} ${esc(r.title)}</div>
-            <div class="sub">${r.type === 'income' ? '收' : '付'}：${esc(memberName(r.payer))}
-              ・${r.split.length === t.members.length ? '全員分' : r.split.map(memberName).map(esc).join('、')}
-              ${r.pay ? `<span class="tag soft">${esc(r.pay)}</span>` : ''}</div>
+            <div class="sub"><span class="tag soft">${esc(r.cat)}</span>${r.type === 'income' ? '<span class="tag">收入 / 退款</span>' : ''}${r.pay ? `<span class="tag soft">${esc(r.pay)}</span>` : ''}</div>
           </div>
           <div class="amt ${r.type}">${r.type === 'income' ? '+' : ''}${fmtCur(r.amount, cur)}
             ${cur !== base() ? `<small>≈ ${money(toBase(r))}</small>` : ''}</div>
@@ -635,67 +613,20 @@ function renderMoney() {
 }
 
 // ===== 結算 =====
-// 這位成員的費用由誰負擔（只認一層、對方存在且自己付）
-function sponsorOf(id) {
-  const t = trip(), m = t.members.find(x => x.id === id);
-  const s = m?.payBy && t.members.find(x => x.id === m.payBy);
-  return s && s.id !== id && !s.payBy ? s.id : null;
-}
 function computeSettle() {
-  const t = trip();
-  const P = Object.fromEntries(t.members.map(m => [m.id, { paid: 0, share: 0, recv: 0, recvShare: 0 }]));
   let expense = 0, income = 0;
-  for (const r of t.money) {
-    const amt = toBase(r), each = amt / r.split.length;
-    if (r.type === 'income') {
-      income += amt;
-      if (P[r.payer]) P[r.payer].recv += amt;
-      r.split.forEach(id => P[id] && (P[id].recvShare += each));
-    } else {
-      expense += amt;
-      if (P[r.payer]) P[r.payer].paid += amt;
-      r.split.forEach(id => P[id] && (P[id].share += each));
-    }
+  for (const r of trip().money) {
+    if (r.type === 'income') income += toBase(r); else expense += toBase(r);
   }
-  // 自己的花費（顯示用）
-  for (const p of Object.values(P)) { p.own = p.share - p.recvShare; p.covers = []; p.bear = p.own; }
-  // 由別人負擔：整筆帳（付出、分攤、收入）併到負擔者身上
-  for (const m of t.members) {
-    const s = sponsorOf(m.id);
-    if (!s) continue;
-    const a = P[m.id], b = P[s];
-    b.paid += a.paid; b.share += a.share; b.recv += a.recv; b.recvShare += a.recvShare;
-    b.bear += a.own; b.covers.push(m.id);
-    a.coveredBy = s; a.paid = a.share = a.recv = a.recvShare = 0;
-  }
-  // balance > 0：別人欠他；< 0：他要付錢
-  for (const p of Object.values(P)) p.balance = (p.paid - p.share) - (p.recv - p.recvShare);
-
-  const debtors = [], creditors = [];
-  for (const [id, p] of Object.entries(P)) {
-    const b = Math.round(p.balance * 100) / 100;
-    if (b < 0) debtors.push({ id, amt: -b }); else if (b > 0) creditors.push({ id, amt: b });
-  }
-  debtors.sort((a, b) => b.amt - a.amt); creditors.sort((a, b) => b.amt - a.amt);
-  const transfers = [];
-  let i = 0, j = 0;
-  while (i < debtors.length && j < creditors.length) {
-    const x = Math.min(debtors[i].amt, creditors[j].amt);
-    if (x >= 1) transfers.push({ from: debtors[i].id, to: creditors[j].id, amt: x }); // 不到 1 元的零頭略過
-    debtors[i].amt -= x; creditors[j].amt -= x;
-    if (debtors[i].amt < 0.005) i++;
-    if (creditors[j].amt < 0.005) j++;
-  }
-  return { P, expense, income, transfers };
+  return { expense, income };
 }
 
 function renderSettle() {
-  const t = trip(), { P, expense, income, transfers } = computeSettle();
-  const net = expense - income, n = t.members.length || 1;
+  const t = trip(), { expense, income } = computeSettle();
+  const net = expense - income;
   const days = t.start && t.end ? dayDiff(t.end, t.start) + 1 : 0;
   $('#settleStats').innerHTML = [
-    [ic('coins') + '總支出', money(expense)], [ic('refund') + '收入 / 退款', money(income)], [ic('receipt') + '淨花費', money(net)],
-    [ic('people') + '平均每人', money(net / n)],
+    [ic('coins') + '總花費', money(expense)], income ? [ic('refund') + '收入 / 退款', money(income)] : null, income ? [ic('receipt') + '淨花費', money(net)] : null,
     days > 0 ? [ic('calendar') + '平均每日', money(net / days)] : null,
     t.budget ? [ic('target') + '預算剩餘', `<span class="${t.budget - net < 0 ? 'neg' : 'pos'}">${money(t.budget - net)}</span>`] : null,
   ].filter(Boolean).map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
@@ -707,31 +638,6 @@ function renderSettle() {
       <div class="progress ${pct > 100 ? 'over' : ''}"><div style="width:${Math.min(100, pct)}%"></div></div>
       <small class="muted">${money(net)} / ${money(t.budget)}</small></div>`;
   } else $('#budgetBox').innerHTML = '';
-
-  $('#personTable').innerHTML = t.members.length ? `<div class="people">${t.members.map(m => {
-    const p = P[m.id], b = p.balance;
-    if (p.coveredBy) return `<div class="person covered">
-      <div class="person-head"><span class="person-name">${esc(m.name)}</span>
-        <span class="person-net">${money(p.own)}</span></div>
-      <span class="badge soft">${ic('heart')} 由 ${esc(memberName(p.coveredBy))} 負擔</span>
-    </div>`;
-    const badge = b >= 1 ? `<span class="badge pos">應收 ${money(b)}</span>`
-      : b <= -1 ? `<span class="badge neg">應付 ${money(-b)}</span>` : `<span class="badge">${ic('check')} 已平衡</span>`;
-    return `<div class="person">
-      <div class="person-head"><span class="person-name">${esc(m.name)}${p.covers.length ? `<small class="muted"> 負擔 ${p.covers.length + 1} 人份</small>` : ''}</span>
-        <span class="person-net">${money(p.bear)}</span></div>
-      <div class="person-rows">
-        <span>實際付出<b>${money(p.paid)}</b></span><span>應分攤<b>${money(p.share)}</b></span>
-        ${p.recv || p.recvShare ? `<span>代收<b>${money(p.recv)}</b></span><span>應得退款<b>${money(p.recvShare)}</b></span>` : ''}
-        ${p.covers.length ? `<span>自己<b>${money(p.own)}</b></span>${p.covers.map(id => `<span>含 ${esc(memberName(id))}<b>${money(P[id].own)}</b></span>`).join('')}` : ''}
-      </div>
-      ${badge}
-    </div>`;
-  }).join('')}</div>` : empty('請先到「更多 → 成員」新增成員', 'camera');
-
-  $('#transfers').innerHTML = transfers.map(x =>
-    `<div class="item transfer"><div class="main"><b>${esc(memberName(x.from))}</b><span class="arrow">${ic('arrow')}</span><b>${esc(memberName(x.to))}</b></div>
-     <div class="amt">${money(x.amt)}</div></div>`).join('') || empty('不需要轉帳，大家都打平了！', 'starfish');
 
   const expenses = t.money.filter(r => r.type !== 'income');
   const group = keyFn => {
@@ -763,22 +669,21 @@ function renderSettle() {
 }
 
 function settleText() {
-  const t = trip(), { P, expense, income, transfers } = computeSettle();
-  const net = expense - income;
-  const lines = [`【${t.name}】旅費結算`, `淨花費 ${money(net)}（平均每人 ${money(net / (t.members.length || 1))}）`, '', '— 每人花費 —'];
-  t.members.forEach(m => {
-    const p = P[m.id];
-    lines.push(p.coveredBy ? `${m.name}：${money(p.own)}（由 ${memberName(p.coveredBy)} 負擔）`
-      : `${m.name}：${money(p.bear)}${p.covers.length ? `（含 ${p.covers.map(memberName).join('、')} 的份）` : ''}，付了 ${money(p.paid)}`);
-  });
-  lines.push('', '— 轉帳 —');
-  if (transfers.length) transfers.forEach(x => lines.push(`${memberName(x.from)} → ${memberName(x.to)}：${money(x.amt)}`));
-  else lines.push('大家都打平了！');
+  const t = trip(), { expense, income } = computeSettle();
+  const net = expense - income, days = t.start && t.end ? dayDiff(t.end, t.start) + 1 : 0;
+  const lines = [`【${t.name}】旅費統計`, `總花費 ${money(expense)}`];
+  if (income) lines.push(`收入 / 退款 ${money(income)}`, `淨花費 ${money(net)}`);
+  if (days > 0) lines.push(`平均每日 ${money(net / days)}`);
+  if (t.budget) lines.push(`預算 ${money(t.budget)}，剩餘 ${money(t.budget - net)}`);
+  const cats = {};
+  t.money.filter(r => r.type !== 'income').forEach(r => { cats[r.cat] = (cats[r.cat] || 0) + toBase(r); });
+  const list = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+  if (list.length) { lines.push('', '— 分類 —'); list.forEach(([c, v]) => lines.push(`${c}：${money(v)}`)); }
   return lines.join('\n');
 }
 $('#shareSettle').addEventListener('click', () => {
   if (!trip().money.length) return toast('還沒有任何記帳');
-  shareText(settleText(), `${trip().name} 結算`);
+  shareText(settleText(), `${trip().name} 花費統計`);
 });
 
 // ===== 更多：訂位資訊 =====
@@ -902,20 +807,9 @@ $('#memberForm').addEventListener('submit', e => {
   trip().members.push({ id: uid(), name });
   e.target.reset(); save(); render();
 });
-$('#memberList').addEventListener('change', e => {
-  if (!e.target.matches('.pay-by')) return;
-  const id = e.target.closest('[data-id]').dataset.id, m = trip().members.find(x => x.id === id);
-  if (e.target.value) m.payBy = e.target.value; else delete m.payBy;
-  save(); render();
-  toast(m.payBy ? `${esc(m.name)} 的費用改由 ${esc(memberName(m.payBy))} 負擔` : `${esc(m.name)} 改回自己付`);
-});
 $('#memberList').addEventListener('click', e => {
   if (!e.target.matches('.del')) return;
   const id = e.target.closest('[data-id]').dataset.id, t = trip();
-  if (t.members.some(m => m.payBy === id))
-    return toast('有人的費用由這位成員負擔，請先改掉');
-  if (t.money.some(r => r.payer === id || r.split.includes(id)))
-    return toast('這位成員有記帳紀錄，請先修改或刪除相關紀錄');
   removeWithUndo('members', id, memberName(id));
 });
 const fileName = s => s.replace(/[\\/:*?"<>|]/g, '_');
@@ -948,18 +842,10 @@ function renderSettings() {
   const t = trip(), el = $('#tripForm').elements;
   if (!$('#tripForm').contains(document.activeElement))
     for (const k of ['name', 'currency', 'start', 'end', 'budget']) el[k].value = t[k] || '';
-  $('#memberList').innerHTML = t.members.map(m => {
-    const others = t.members.filter(x => x.id !== m.id && !x.payBy);
-    const sponsored = t.members.some(x => x.payBy === m.id);
-    return `<div class="member-row" data-id="${m.id}">
+  $('#memberList').innerHTML = t.members.map(m => `<div class="member-row" data-id="${m.id}">
       <span class="member-name">${ic('user')}${esc(m.name)}</span>
-      <select class="pay-by" title="費用由誰負擔" ${sponsored ? 'disabled' : ''}>
-        <option value="">自己付</option>
-        ${others.map(x => `<option value="${x.id}" ${m.payBy === x.id ? 'selected' : ''}>由 ${esc(x.name)} 負擔</option>`).join('')}
-      </select>
       <button class="icon del" title="刪除">${ic('x')}</button>
-    </div>`;
-  }).join('') || '<span class="muted">尚無成員</span>';
+    </div>`).join('') || '<span class="muted">尚無成員</span>';
   renderBookings(); renderRates();
 }
 
@@ -982,10 +868,6 @@ function render() {
   const curOpts = CURS().map(c => `<option value="${c}">${c}</option>`).join('');
   $$('.cur-select').forEach(s => fillSelect(s, curOpts, guessCur($('#moneyForm').elements.date.value || todayStr())));
   fillSelect($('#convCur'), curOpts, CURS().includes('KRW') ? 'KRW' : base());
-  if (!$('#moneyForm').elements.id.value) {
-    const boxes = $$('#splitBox input');
-    renderSplitBox(boxes.length === t.members.length && boxes.length ? boxes.filter(i => i.checked).map(i => i.value) : null);
-  }
   renderCloud();
   renderLive(); renderPrep(); renderPlan(); renderMoney(); renderSettle(); renderSettings(); renderConverter();
 }
@@ -1436,7 +1318,7 @@ navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261120235122';
+const APP_VERSION = '20261121003614';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
