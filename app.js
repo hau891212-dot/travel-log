@@ -226,7 +226,7 @@ function renderPrep() {
 
 // ===== 行程 =====
 // kind：spot 景點行程 / flight 航班 / transit 交通（mode：train ferry bus taxi walk）
-const MODE = { train: ['電車', 'train'], ferry: ['渡輪', 'ferry'], bus: ['巴士', 'bus'], taxi: ['計程車', 'taxi'], walk: ['步行', 'walk'] };
+const MODE = { train: ['電車', 'train'], ferry: ['渡輪', 'ferry'], bus: ['巴士', 'bus'], pickup: ['機場接送', 'van'], taxi: ['計程車', 'taxi'], walk: ['步行', 'walk'] };
 const kindOf = p => p.kind || 'spot';
 const isMove = p => kindOf(p) !== 'spot';
 const routeText = p => [p.from, p.to].filter(Boolean).join(' → ');
@@ -242,9 +242,20 @@ function setPlanKind(kind) {
   });
   const ph = { spot: ['開始', '結束'], flight: ['起飛', '抵達'], transit: ['出發', '抵達'] }[kind];
   form.elements.start.title = ph[0]; form.elements.end.title = ph[1];
-  form.elements.code.placeholder = kind === 'flight' ? '航班號，例如 BX794' : '班次 / 路線（選填）';
+  setCodeHint();
 }
-$('#planForm').addEventListener('change', e => { if (e.target.name === 'kind') setPlanKind(e.target.value); });
+function setCodeHint() {
+  const el = $('#planForm').elements, kind = $('#planForm [name=kind]:checked')?.value || 'spot';
+  const pickup = kind === 'transit' && el.mode.value === 'pickup';
+  el.code.placeholder = kind === 'flight' ? '航班號，例如 BX794' : pickup ? '接送公司 / 預約編號' : '班次 / 路線（選填）';
+  el.from.placeholder = pickup ? '上車地點，例如 金海機場' : kind === 'flight' ? '出發地，例如 桃園 TPE' : '出發地';
+  el.to.placeholder = pickup ? '下車地點，例如 飯店' : kind === 'flight' ? '目的地，例如 金海 PUS' : '目的地';
+  el.note.placeholder = pickup ? '司機電話 / 車牌 / 集合處' : '備註 / 訂位代號';
+}
+$('#planForm').addEventListener('change', e => {
+  if (e.target.name === 'kind') setPlanKind(e.target.value);
+  if (e.target.name === 'mode') setCodeHint();
+});
 function setPlanEditing(on) {
   $('#planFormTitle').textContent = on ? '編輯行程' : '新增行程';
   $('#planSubmit').textContent = on ? '更新行程' : '新增行程';
@@ -272,7 +283,7 @@ $('#planForm').addEventListener('submit', e => {
   // 依類型清掉不用的欄位
   const rec = { kind: f.kind, date: f.date, start: f.start, end: f.end || '', note: f.note || '' };
   if (f.kind === 'spot') Object.assign(rec, { city: f.city, title: f.title, place: f.place || '' });
-  else Object.assign(rec, { from: f.from, to: f.to, code: (f.code || '').toUpperCase(), title: '', place: '',
+  else Object.assign(rec, { from: f.from, to: f.to, code: f.kind === 'flight' ? (f.code || '').toUpperCase() : (f.code || ''), title: '', place: '',
     city: f.kind === 'flight' ? 'move' : f.city, ...(f.kind === 'transit' ? { mode: f.mode } : {}) });
   if (f.id) { const p = t.plan.find(x => x.id === f.id); for (const k of Object.keys(p)) if (k !== 'id') delete p[k]; Object.assign(p, rec); }
   else t.plan.push({ ...rec, id: uid() });
@@ -290,6 +301,7 @@ function editPlan(id) {
   setPlanKind(kind);
   for (const k of ['city', 'date', 'start', 'end', 'title', 'place', 'note', 'from', 'to', 'code', 'id']) el[k].value = p[k] || '';
   el.mode.value = p.mode || 'train';
+  setCodeHint();
   setPlanEditing(true);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -1340,7 +1352,7 @@ navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261120225948';
+const APP_VERSION = '20261120230728';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
