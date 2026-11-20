@@ -1,0 +1,8 @@
+#!/bin/sh
+# 每次 commit 自動蓋上新版本號 → 手機端偵測到就會自動更新
+cd "$(git rev-parse --show-toplevel)" || exit 0
+V=$(date +%Y%m%d%H%M%S)
+printf '{ "version": "%s" }\n' "$V" > version.json
+sed -i '' -E "s/^const APP_VERSION = '[^']*';/const APP_VERSION = '$V';/" app.js
+sed -i '' -E "s/^const CACHE = 'travel-log-[^']*';/const CACHE = 'travel-log-$V';/" sw.js
+git add version.json app.js sw.js

@@ -504,6 +504,64 @@ $('#moneyForm').elements.date.value = todayStr();
 $('#planForm').elements.date.value = trip().start || todayStr();
 render();
 
+// ===== 自動偵測更新 =====
+// APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
+const APP_VERSION = '20261120140812';
+let swReg = null, updating = false;
+
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+    .then(r => { swReg = r; })
+    .catch(() => {});
 }
+
+function isBusy() {
+  const a = document.activeElement;
+  return a && a.matches('input:not([type=checkbox]), select, textarea');
+}
+
+async function applyUpdate() {
+  if (updating) return;
+  updating = true;
+  showUpdateToast('更新中…', false);
+  try {
+    if (swReg) {
+      await swReg.update();
+      swReg.waiting?.postMessage('skipWaiting');
+    }
+    if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+  } catch {}
+  location.reload();
+}
+
+function showUpdateToast(text = '有新版本囉！', withBtn = true) {
+  let t = $('#updateToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'updateToast';
+    t.className = 'update-toast';
+    document.body.appendChild(t);
+  }
+  t.innerHTML = `${ic('sparkle')}<span>${text}</span>` +
+    (withBtn ? `<button type="button" id="updateNow">立即更新</button><button type="button" class="icon" id="updateLater" title="稍後">${ic('x')}</button>` : '');
+  $('#updateNow')?.addEventListener('click', applyUpdate);
+  $('#updateLater')?.addEventListener('click', () => t.remove());
+}
+
+async function checkUpdate(auto = false) {
+  if (APP_VERSION === 'dev' || !navigator.onLine || updating) return;
+  try {
+    const res = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const { version } = await res.json();
+    if (!version || version === APP_VERSION) return;
+    // 剛打開 / 切回 App 且沒有在輸入 → 直接更新；否則跳提示
+    if (auto && !isBusy()) applyUpdate();
+    else if (!$('#updateToast')) showUpdateToast();
+  } catch {}
+}
+
+checkUpdate(true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(true); });
+window.addEventListener('online', () => checkUpdate(true));
+setInterval(() => { if (!document.hidden) checkUpdate(false); }, 60000);

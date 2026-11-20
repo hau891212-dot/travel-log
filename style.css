@@ -508,3 +508,15 @@ body { background:
   radial-gradient(circle, color-mix(in srgb, var(--sea) 45%, transparent) 1.2px, transparent 1.7px) 0 0 / 24px 24px,
   var(--paper); }
 .doodles svg { opacity: .3; }
+
+/* 新版本提示 */
+.update-toast {
+  position: fixed; z-index: 60; left: 50%; top: calc(12px + env(safe-area-inset-top));
+  transform: translateX(-50%) rotate(-1deg); width: min(92vw, 440px);
+  display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px;
+  background: var(--yellow); color: var(--ink); border: 2.5px solid var(--ink); border-radius: var(--r1);
+  box-shadow: var(--shadow-lg); animation: toastIn .5s cubic-bezier(.3,1.6,.5,1);
+}
+.update-toast span { flex: 1; }
+.update-toast button:not(.icon) { min-height: 38px; padding: 4px 12px; background: var(--card); }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, -30px) rotate(-6deg); } }
