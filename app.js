@@ -16,31 +16,109 @@ const CITY = {
 const cityTag = c => CITY[c] ? `<span class="city ${c}">${CITY[c].flag} ${CITY[c].name}</span>` : '';
 const empty = (msg, icon = 'suitcase') =>
   `<div class="empty"><svg><use href="#i-${icon}"/></svg><p>${msg}</p></div>`;
-
-// ===== 資料層 =====
-function newTrip(name = '釜山 × 福岡') {
-  return { id: uid(), name, currency: 'TWD', start: '', end: '', budget: 0,
-    members: [], prep: [], plan: [], money: [] };
-}
-let db;
-try { db = JSON.parse(localStorage.getItem(KEY)); } catch { db = null; }
-if (!db || !db.trips?.length) {
-  const t = newTrip();
-  db = { current: t.id, trips: [t] };
-}
-const save = () => localStorage.setItem(KEY, JSON.stringify(db));
-const trip = () => db.trips.find(t => t.id === db.current) || db.trips[0];
-const memberName = id => trip().members.find(m => m.id === id)?.name ?? '（已刪除）';
-const money = n => {
-  const cur = trip().currency || '';
-  return `${cur} ${Number(n || 0).toLocaleString('zh-TW', { maximumFractionDigits: 2 })}`.trim();
-};
 const fmtDate = s => {
   if (!s) return '';
   const d = new Date(s + 'T00:00');
   return `${d.getMonth() + 1}/${d.getDate()}（${WEEK[d.getDay()]}）`;
 };
 const toMin = t => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
+const dayDiff = (a, b) => Math.round((new Date(a + 'T00:00') - new Date(b + 'T00:00')) / 864e5);
+
+// ===== 資料層 =====
+const DEFAULT_RATES = { KRW: 0.023, JPY: 0.21 }; // 1 單位外幣 = ? TWD（約略值，可在「更多」更新）
+
+function newTrip(name = '釜山 × 福岡') {
+  return migrate({ id: uid(), name, currency: 'TWD', start: '', end: '', budget: 0 });
+}
+function migrate(t) {
+  t.members ||= []; t.prep ||= []; t.plan ||= []; t.money ||= []; t.bookings ||= [];
+  t.currency = (t.currency || 'TWD').toUpperCase();
+  if (!t.rates) t.rates = t.currency === 'TWD' ? { ...DEFAULT_RATES } : {};
+  return t;
+}
+
+let db;
+try { db = JSON.parse(localStorage.getItem(KEY)); } catch { db = null; }
+if (!db || !db.trips?.length) {
+  const t = newTrip();
+  db = { current: t.id, trips: [t] };
+}
+db.trips.forEach(migrate);
+
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(db)); }
+  catch { toast('儲存失敗：手機空間不足或在無痕模式'); }
+}
+const trip = () => db.trips.find(t => t.id === db.current) || db.trips[0];
+const memberName = id => trip().members.find(m => m.id === id)?.name ?? '（已刪除）';
+
+// ===== 幣別 =====
+const base = () => trip().currency || 'TWD';
+const CURS = () => [...new Set([base(), ...Object.keys(trip().rates || {})])];
+const rateOf = cur => (!cur || cur === base()) ? 1 : (trip().rates?.[cur] ?? 1);
+const toBase = r => r.amount * rateOf(r.cur);
+const NO_DEC = ['TWD', 'KRW', 'JPY'];
+const fmtCur = (n, cur) =>
+  `${cur} ${Number(n || 0).toLocaleString('zh-TW', { maximumFractionDigits: NO_DEC.includes(cur) ? 0 : 2 })}`;
+const money = n => fmtCur(n, base());
+
+// 依當天行程城市猜幣別：只有福岡→JPY、只有釜山→KRW，否則用上次的
+function guessCur(date) {
+  const cs = new Set(trip().plan.filter(p => p.date === date).map(p => p.city));
+  const has = c => CURS().includes(c);
+  if (cs.has('fukuoka') && !cs.has('busan') && has('JPY')) return 'JPY';
+  if (cs.has('busan') && !cs.has('fukuoka') && has('KRW')) return 'KRW';
+  return db.lastCur && has(db.lastCur) ? db.lastCur : base();
+}
+
+// ===== 提示 / 復原 / 分享 =====
+let toastTimer;
+function toast(msg, action, onAction, ms = 4500) {
+  let el = $('#toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast'; el.className = 'toast'; el.setAttribute('role', 'status');
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<span>${msg}</span>` + (action ? `<button type="button">${action}</button>` : '');
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  const hide = () => el.classList.remove('show');
+  if (action) el.querySelector('button').onclick = () => { onAction(); hide(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(hide, ms);
+}
+
+function removeWithUndo(key, id, label) {
+  const t = trip(), idx = t[key].findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const [item] = t[key].splice(idx, 1);
+  save(); render(); navigator.vibrate?.(10);
+  toast(`已刪除「${esc(label)}」`, '復原', () => { t[key].splice(idx, 0, item); save(); render(); });
+}
+
+async function copyText(text, msg = '已複製') {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = Object.assign(document.createElement('textarea'), { value: text });
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  toast(msg);
+}
+async function shareText(text, title) {
+  if (navigator.share) {
+    try { await navigator.share({ title, text }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  copyText(text, '已複製，可以貼到 LINE 給旅伴');
+}
+async function saveFile(name, text) {
+  const file = new File([text], name, { type: 'application/json' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(file), download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
 
 // ===== 分頁 + 轉場 =====
 const PLANE = `<svg viewBox="0 0 74 40"><g stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
@@ -74,31 +152,52 @@ $('#tabs').addEventListener('click', e => {
   navigator.vibrate?.(8);
 });
 const goTab = name => $(`#tabs [data-tab=${name}]`).click();
+const scrollToEl = el => el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
 // ===== 旅程切換 =====
-$('#tripSelect').addEventListener('change', e => { db.current = e.target.value; save(); render(); });
+$('#tripSelect').addEventListener('change', e => { db.current = e.target.value; save(); resetForms(); render(); });
 $('#newTripBtn').addEventListener('click', () => {
-  const name = prompt('新旅程名稱'); if (!name) return;
-  const t = newTrip(name); db.trips.push(t); db.current = t.id; save(); render();
+  const name = prompt('新旅程名稱'); if (!name?.trim()) return;
+  const t = newTrip(name.trim()); db.trips.push(t); db.current = t.id; save(); resetForms(); render();
+  goTab('settings');
+  toast('新旅程建立好了，先設定日期和成員吧！');
 });
 
 // ===== 前置作業 =====
+const PREP_TEMPLATE = [
+  ['護照（效期 6 個月以上）', '證件'], ['確認韓國入境規定（K-ETA / 入境卡）', '證件'], ['填寫 Visit Japan Web', '證件'],
+  ['旅遊平安險 / 不便險', '證件'], ['機票', '交通'], ['釜山 ⇄ 福岡 渡輪 / 機票', '交通'], ['住宿訂房', '住宿'],
+  ['韓國網路（eSIM / 網卡）', '網路'], ['日本網路（eSIM / 網卡）', '網路'], ['下載 Naver Map / Kakao Map', '網路'],
+  ['下載 Papago 翻譯', '網路'], ['換韓元', '其他'], ['換日幣', '其他'], ['信用卡開通海外刷卡', '其他'],
+  ['T-money 交通卡（釜山）', '交通'], ['IC 交通卡（福岡）', '交通'], ['韓國轉接頭（220V 圓腳）', '行李'],
+  ['行動電源（隨身帶上機）', '行李'], ['常備藥品', '行李'],
+];
+
 $('#prepForm').addEventListener('submit', e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
-  trip().prep.push({ id: uid(), text: f.text, cat: f.cat, owner: f.owner, due: f.due, done: false });
+  trip().prep.push({ id: uid(), text: f.text.trim(), cat: f.cat, owner: f.owner, due: f.due, done: false });
   e.target.elements.text.value = ''; save(); render();
+});
+$('#prepTemplate').addEventListener('click', () => {
+  const have = new Set(trip().prep.map(p => p.text));
+  const add = PREP_TEMPLATE.filter(([x]) => !have.has(x))
+    .map(([text, cat]) => ({ id: uid(), text, cat, owner: '', due: '', done: false }));
+  if (!add.length) return toast('常用清單都已經加過了');
+  trip().prep.push(...add); save(); render();
+  const ids = new Set(add.map(a => a.id));
+  toast(`已加入 ${add.length} 項`, '復原', () => { trip().prep = trip().prep.filter(p => !ids.has(p.id)); save(); render(); });
 });
 $('#prepList').addEventListener('click', e => {
   const id = e.target.closest('[data-id]')?.dataset.id; if (!id) return;
-  const t = trip();
+  const p = trip().prep.find(x => x.id === id);
   if (e.target.matches('input[type=checkbox]')) {
-    t.prep.find(x => x.id === id).done = e.target.checked;
-    if (e.target.checked) navigator.vibrate?.(15);
+    p.done = e.target.checked;
+    if (p.done) navigator.vibrate?.(15);
+    save(); render();
   } else if (e.target.matches('.del')) {
-    t.prep = t.prep.filter(x => x.id !== id);
-  } else return;
-  save(); render();
+    removeWithUndo('prep', id, p.text);
+  }
 });
 
 function renderPrep() {
@@ -121,33 +220,48 @@ function renderPrep() {
         </div>
       </div>
       <button class="icon del" title="刪除">${ic('x')}</button>
-    </div>`).join('') || empty('行李箱還空空的～<br>先列出出發前要做的事吧！', 'suitcase');
+    </div>`).join('') || empty('行李箱還空空的～<br>先列出出發前要做的事，或按上面一鍵加入！', 'suitcase');
 }
 
 // ===== 行程 =====
+function setPlanEditing(on) {
+  $('#planFormTitle').textContent = on ? '編輯行程' : '新增行程';
+  $('#planSubmit').textContent = on ? '更新行程' : '新增行程';
+  $('#planCancel').hidden = !on;
+  $('#planForm').classList.toggle('editing', on);
+}
+function resetPlanForm(keep = {}) {
+  const form = $('#planForm'), el = form.elements;
+  form.reset();
+  el.id.value = '';
+  el.date.value = keep.date || trip().start || todayStr();
+  if (keep.city !== undefined) el.city.value = keep.city;
+  setPlanEditing(false);
+}
 $('#planForm').addEventListener('submit', e => {
   e.preventDefault();
-  const form = e.target, f = Object.fromEntries(new FormData(form));
+  const f = Object.fromEntries(new FormData(e.target));
   const t = trip();
+  if (f.end && f.end < f.start && !confirm('結束時間比開始早（跨午夜）？確定要儲存嗎？')) return;
   if (f.id) Object.assign(t.plan.find(x => x.id === f.id), f);
   else t.plan.push({ ...f, id: uid() });
-  const keep = { date: f.date, city: f.city };
-  form.reset();
-  form.elements.date.value = keep.date; form.elements.city.value = keep.city; form.elements.id.value = '';
-  save(); render();
+  save();
+  toast(f.id ? '行程已更新' : `已加入 ${fmtDate(f.date)} ${esc(f.title)}`);
+  resetPlanForm({ date: f.date, city: f.city });
+  render();
 });
+$('#planCancel').addEventListener('click', () => resetPlanForm());
 
 function editPlan(id) {
   const p = trip().plan.find(x => x.id === id), el = $('#planForm').elements;
   for (const k of ['city', 'date', 'start', 'end', 'title', 'place', 'note', 'id']) el[k].value = p[k] || '';
+  setPlanEditing(true);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  el.title.focus({ preventScroll: true });
 }
 function planClick(e) {
   const id = e.target.closest('[data-id]')?.dataset.id; if (!id) return;
   if (e.target.matches('.del')) {
-    if (!confirm('刪除這個行程？')) return;
-    trip().plan = trip().plan.filter(x => x.id !== id); save(); render();
+    removeWithUndo('plan', id, trip().plan.find(x => x.id === id)?.title);
   } else if (e.target.matches('.edit')) {
     if (!$('#tab-plan').classList.contains('active')) goTab('plan');
     editPlan(id);
@@ -155,17 +269,24 @@ function planClick(e) {
 }
 $('#planList').addEventListener('click', planClick);
 $('#todayList').addEventListener('click', planClick);
+$('#dayChips').addEventListener('click', e => {
+  const d = e.target.closest('[data-day]')?.dataset.day;
+  if (d) scrollToEl(document.getElementById('day-' + d));
+});
 
 const sortedPlan = () => [...trip().plan].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 const mapLink = place => place
   ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}" target="_blank" rel="noopener">${ic('pin')}${esc(place)}</a>` : '';
+// Google 地圖在韓國無法導航，釜山的行程多給一個 Naver 地圖
+const naverLink = p => p.city === 'busan' && p.place
+  ? ` <a class="mini" href="https://map.naver.com/p/search/${encodeURIComponent(p.place)}" target="_blank" rel="noopener">Naver</a>` : '';
 
 function planItem(p, cls = '') {
   return `<div class="item ${cls} city-${p.city || 'none'}" data-id="${p.id}">
     <div class="time">${esc(p.start)}${p.end ? `<small>${esc(p.end)}</small>` : ''}</div>
     <div class="main">
       <div class="title">${cityTag(p.city)}${esc(p.title)}</div>
-      <div class="sub">${mapLink(p.place)}${p.note ? ' ' + esc(p.note) : ''}</div>
+      <div class="sub">${mapLink(p.place)}${naverLink(p)}${p.note ? ' ' + esc(p.note) : ''}</div>
     </div>
     <div class="btns">
       <button class="icon edit" title="編輯">${ic('pencil')}</button>
@@ -177,11 +298,14 @@ function planItem(p, cls = '') {
 function renderPlan() {
   const byDay = {};
   sortedPlan().forEach(p => (byDay[p.date] ||= []).push(p));
-  const start = trip().start;
-  $('#planList').innerHTML = Object.keys(byDay).map(d => {
-    const n = start ? Math.round((new Date(d) - new Date(start)) / 864e5) + 1 : null;
+  const days = Object.keys(byDay), start = trip().start, today = todayStr();
+  const dayNo = d => start ? dayDiff(d, start) + 1 : 0;
+  $('#dayChips').innerHTML = days.length > 1 ? days.map(d =>
+    `<button type="button" class="chip ${d === today ? 'on' : ''}" data-day="${d}">${dayNo(d) > 0 ? `D${dayNo(d)} ` : ''}${fmtDate(d).replace(/（.）/, '')}</button>`).join('') : '';
+  $('#planList').innerHTML = days.map(d => {
+    const n = dayNo(d);
     const cities = [...new Set(byDay[d].map(p => p.city).filter(c => CITY[c]))];
-    return `<div class="day-head">
+    return `<div class="day-head" id="day-${d}">
         <span class="day-badge">${n > 0 ? `Day ${n}` : ic('calendar')}</span>
         <span>${fmtDate(d)}</span>
         ${cities.map(c => `<span class="stamp ${c}">${CITY[c].name}</span>`).join('')}
@@ -195,7 +319,11 @@ function renderPlan() {
 function liveState(now = new Date()) {
   const today = todayStr(now), nowMin = now.getHours() * 60 + now.getMinutes();
   const todays = sortedPlan().filter(p => p.date === today);
-  const endOf = (p, i) => p.end ? toMin(p.end) : (todays[i + 1] ? toMin(todays[i + 1].start) : toMin(p.start) + 60);
+  const endOf = (p, i) => {
+    if (p.end && p.end > p.start) return toMin(p.end);
+    if (p.end) return 24 * 60; // 跨午夜：今天內都算進行中
+    return todays[i + 1] ? toMin(todays[i + 1].start) : toMin(p.start) + 60;
+  };
   let current = null, next = null;
   todays.forEach((p, i) => {
     if (toMin(p.start) <= nowMin && nowMin < endOf(p, i)) current = p;
@@ -230,27 +358,30 @@ function pass({ label, title, sub = '', extra = '', city = '', stubTop, stubMid,
 }
 
 function renderLive() {
-  const now = new Date(), t = trip();
-  $('#clock').innerHTML = `${ic('clock')} ${fmtDate(todayStr(now))} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const now = new Date(), t = trip(), today = todayStr(now);
+  $('#clock').innerHTML = `${ic('clock')} ${fmtDate(today)} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const { todays, current, next, nowMin, endOf } = liveState(now);
   let html = '';
 
-  if (t.start && todayStr(now) < t.start) {
-    const d = Math.ceil((new Date(t.start + 'T00:00') - now) / 864e5);
+  if (t.start && today < t.start) {
+    const d = dayDiff(t.start, today);
+    const left = t.prep.filter(p => !p.done).length;
     html += pass({
       label: 'DEPARTURE · 距離出發', title: `還有 ${d} 天！`,
-      sub: `前置作業完成 ${t.prep.filter(p => p.done).length} / ${t.prep.length}`,
+      sub: t.prep.length ? (left ? `前置作業還剩 ${left} 項` : '前置作業全部完成') : '還沒有前置作業清單',
       stubTop: ic('plane'), stubMid: 'D-day', stubBot: `D-${d}`,
     });
+  } else if (t.start && t.end && today >= t.start && today <= t.end) {
+    html += `<div class="trip-day">${ic('map')} 旅程第 <b>${dayDiff(today, t.start) + 1}</b> 天・共 ${dayDiff(t.end, t.start) + 1} 天</div>`;
   }
   if (current) {
     const c = CITY[current.city];
-    const total = endOf(current, todays.indexOf(current)) - toMin(current.start);
+    const total = Math.max(1, endOf(current, todays.indexOf(current)) - toMin(current.start));
     const pct = Math.min(100, (nowMin - toMin(current.start)) / total * 100);
     html += pass({
       cls: 'now', city: current.city,
       label: '<span class="live-dot"></span>NOW · 正在進行', title: esc(current.title),
-      sub: `${esc(current.start)}${current.end ? '–' + esc(current.end) : ''}　${mapLink(current.place)}`,
+      sub: `${esc(current.start)}${current.end ? '–' + esc(current.end) : ''}　${mapLink(current.place)}${naverLink(current)}`,
       extra: `${current.note ? `<div>${esc(current.note)}</div>` : ''}<div class="progress"><div style="width:${pct}%"></div></div>`,
       stubTop: c ? c.flag : ic('pin'), stubMid: c ? c.name : '行程', stubBot: esc(current.start),
     });
@@ -260,20 +391,35 @@ function renderLive() {
     html += pass({
       city: next.city,
       label: 'NEXT · 下一站', title: esc(next.title),
-      sub: `${fmtDate(next.date)} ${esc(next.start)}　${mapLink(next.place)}`,
+      sub: `${fmtDate(next.date)} ${esc(next.start)}　${mapLink(next.place)}${naverLink(next)}`,
       extra: `<div class="countdown">${ic('hourglass')} ${countdown(next, now)}</div>`,
       stubTop: c ? c.flag : ic('pin'), stubMid: c ? c.name : '行程', stubBot: esc(next.start),
     });
   }
   $('#liveBox').innerHTML = html || empty('目前沒有進行中或即將到來的行程<br>去「行程」排一下吧！', 'camera');
 
+  const bk = t.bookings.filter(b => b.date === today);
+  $('#bookingToday').innerHTML = bk.length ? `<h3>今日訂位</h3>${bk.map(bookingItem).join('')}` : '';
+
   $('#todayList').innerHTML = todays.length
     ? `<div class="timeline">${todays.map((p, i) =>
         planItem(p, p === current ? 'now' : endOf(p, i) <= nowMin ? 'past' : '')).join('')}</div>`
     : empty('今天沒有排行程，自由活動～', 'umbrella');
 }
-setInterval(() => { if ($('#tab-live').classList.contains('active')) renderLive(); }, 30000);
+setInterval(() => { if ($('#tab-live').classList.contains('active') && !document.hidden) renderLive(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) renderLive(); });
+$('#bookingToday').addEventListener('click', bookingClick);
+
+// 匯率換算器
+function renderConverter() {
+  const a = parseFloat($('#convAmt').value), from = $('#convCur').value;
+  if (!a || !from) { $('#convOut').innerHTML = `<span class="muted">輸入金額，馬上換算成其他幣別</span>`; return; }
+  const inBase = a * rateOf(from);
+  $('#convOut').innerHTML = CURS().filter(c => c !== from).map(c =>
+    `<div class="conv-line"><span>${c}</span><b>${fmtCur(inBase / rateOf(c), c).replace(c + ' ', '')}</b></div>`).join('');
+}
+$('#convAmt').addEventListener('input', renderConverter);
+$('#convCur').addEventListener('change', renderConverter);
 
 // ===== 記帳 =====
 function renderSplitBox(selected) {
@@ -282,40 +428,80 @@ function renderSplitBox(selected) {
   $('#splitBox').innerHTML = t.members.map(m => `
     <label class="chip ${sel.includes(m.id) ? 'on' : ''}">
       <input type="checkbox" value="${m.id}" ${sel.includes(m.id) ? 'checked' : ''}>${esc(m.name)}</label>`).join('')
-    || '<span class="muted">請先到「設定」新增成員</span>';
+    || '<span class="muted">請先到「更多 → 成員」新增成員</span>';
 }
 $('#splitBox').addEventListener('change', e => e.target.closest('.chip').classList.toggle('on', e.target.checked));
+$('#splitAll').addEventListener('click', () => {
+  const boxes = $$('#splitBox input'), all = boxes.every(b => b.checked);
+  boxes.forEach(b => { b.checked = !all; b.closest('.chip').classList.toggle('on', !all); });
+});
 
+function updateAmtPreview() {
+  const el = $('#moneyForm').elements, a = parseFloat(el.amount.value), cur = el.cur.value;
+  $('#amtPreview').textContent = a && cur && cur !== base() ? `≈ ${money(a * rateOf(cur))}` : '';
+}
+$('#moneyForm').elements.amount.addEventListener('input', updateAmtPreview);
+$('#moneyForm').elements.cur.addEventListener('change', updateAmtPreview);
+$('#moneyForm').elements.date.addEventListener('change', e => {
+  if (!$('#moneyForm').elements.id.value) { $('#moneyForm').elements.cur.value = guessCur(e.target.value); updateAmtPreview(); }
+});
+
+function setMoneyEditing(on) {
+  $('#moneyFormTitle').textContent = on ? '編輯紀錄' : '記一筆';
+  $('#moneySubmit').textContent = on ? '更新' : '儲存';
+  $('#moneyReset').textContent = on ? '取消編輯' : '清除';
+  $('#moneyForm').classList.toggle('editing', on);
+}
+// 完整重設（清除 / 取消編輯 / 換旅程）
 function resetMoneyForm() {
-  const f = $('#moneyForm'); f.reset(); f.elements.id.value = ''; f.elements.date.value = todayStr(); renderSplitBox();
+  const form = $('#moneyForm'), el = form.elements;
+  form.reset();
+  el.id.value = '';
+  el.date.value = todayStr();
+  el.cur.value = guessCur(todayStr());
+  if (db.lastPayer && trip().members.some(m => m.id === db.lastPayer)) el.payer.value = db.lastPayer;
+  renderSplitBox();
+  setMoneyEditing(false); updateAmtPreview();
 }
 $('#moneyReset').addEventListener('click', resetMoneyForm);
 
 $('#moneyForm').addEventListener('submit', e => {
   e.preventDefault();
-  const f = Object.fromEntries(new FormData(e.target));
+  const el = e.target.elements, f = Object.fromEntries(new FormData(e.target));
   const split = $$('#splitBox input:checked').map(i => i.value);
-  if (!split.length) return alert('請至少選一位分攤成員');
-  const rec = { type: f.type, date: f.date, title: f.title, cat: f.cat, amount: +f.amount, payer: f.payer, split };
+  if (!trip().members.length) return toast('請先到「更多 → 成員」新增成員');
+  if (!split.length) return toast('請至少選一位分攤成員');
+  const amount = parseFloat(f.amount);
+  if (!(amount > 0)) return toast('金額要大於 0');
+  const rec = { type: f.type, date: f.date, title: f.title.trim(), cat: f.cat, amount, cur: f.cur || base(),
+    pay: f.pay, payer: f.payer, split };
   const t = trip();
   if (f.id) Object.assign(t.money.find(x => x.id === f.id), rec);
   else t.money.push({ id: uid(), ...rec });
-  save(); resetMoneyForm(); render();
+  db.lastCur = rec.cur; db.lastPayer = rec.payer;
+  save();
+  toast(f.id ? '已更新' : `已記下 ${esc(rec.title)} ${fmtCur(amount, rec.cur)}`);
   navigator.vibrate?.(15);
+  if (f.id) resetMoneyForm();
+  else { // 連續記帳：保留日期、幣別、付款人、分攤，只清項目和金額
+    el.title.value = ''; el.amount.value = ''; el.type.value = 'expense'; updateAmtPreview();
+  }
+  render();
 });
 
 $('#moneyList').addEventListener('click', e => {
   const id = e.target.closest('[data-id]')?.dataset.id; if (!id) return;
-  const t = trip();
+  const t = trip(), r = t.money.find(x => x.id === id);
   if (e.target.matches('.del')) {
-    if (!confirm('刪除這筆紀錄？')) return;
-    t.money = t.money.filter(x => x.id !== id); save(); render();
+    removeWithUndo('money', id, r.title);
   } else if (e.target.matches('.edit')) {
-    const r = t.money.find(x => x.id === id), el = $('#moneyForm').elements;
+    const el = $('#moneyForm').elements;
     for (const k of ['type', 'date', 'title', 'cat', 'amount', 'payer', 'id']) el[k].value = r[k];
+    el.cur.value = r.cur || base();
+    el.pay.value = r.pay || '現金';
     renderSplitBox(r.split);
+    setMoneyEditing(true); updateAmtPreview();
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    el.title.focus({ preventScroll: true });
   }
 });
 $('#moneyFilter').addEventListener('change', renderMoney);
@@ -328,20 +514,34 @@ function renderMoney() {
   const cats = [...new Set(t.money.map(r => r.cat))];
   $('#moneyFilter').innerHTML = '<option value="">全部分類</option>' +
     cats.map(c => `<option ${c === cat ? 'selected' : ''}>${esc(c)}</option>`).join('');
-  const list = t.money.filter(r => !cat || r.cat === cat).sort((a, b) => b.date.localeCompare(a.date));
-  $('#moneyList').innerHTML = list.map(r => `
-    <div class="item" data-id="${r.id}">
-      <div class="main">
-        <div class="title">${catIc(r.cat)} ${esc(r.title)}</div>
-        <div class="sub">${fmtDate(r.date)}　${r.type === 'income' ? '收' : '付'}：${esc(memberName(r.payer))}
-          ・${r.split.length === t.members.length ? '全員分' : r.split.map(memberName).map(esc).join('、')}</div>
-      </div>
-      <div class="amt ${r.type}">${r.type === 'income' ? '+' : ''}${money(r.amount)}</div>
-      <div class="btns">
-        <button class="icon edit" title="編輯">${ic('pencil')}</button>
-        <button class="icon del" title="刪除">${ic('x')}</button>
-      </div>
-    </div>`).join('') || empty('錢包還沒動過～<br>記下第一筆吧！', 'fishcake');
+  const list = t.money.filter(r => !cat || r.cat === cat);
+  const sum = list.reduce((s, r) => s + (r.type === 'income' ? -1 : 1) * toBase(r), 0);
+  $('#moneyTotal').textContent = list.length ? `${list.length} 筆・淨 ${money(sum)}` : '';
+
+  const byDay = {};
+  list.forEach(r => (byDay[r.date] ||= []).push(r));
+  $('#moneyList').innerHTML = Object.keys(byDay).sort().reverse().map(d => {
+    const day = byDay[d];
+    const sub = day.reduce((s, r) => s + (r.type === 'income' ? 0 : toBase(r)), 0);
+    return `<div class="money-day"><span>${fmtDate(d)}</span><span class="muted">支出 ${money(sub)}</span></div>` +
+      day.map(r => {
+        const cur = r.cur || base();
+        return `<div class="item" data-id="${r.id}">
+          <div class="main">
+            <div class="title">${catIc(r.cat)} ${esc(r.title)}</div>
+            <div class="sub">${r.type === 'income' ? '收' : '付'}：${esc(memberName(r.payer))}
+              ・${r.split.length === t.members.length ? '全員分' : r.split.map(memberName).map(esc).join('、')}
+              ${r.pay ? `<span class="tag soft">${esc(r.pay)}</span>` : ''}</div>
+          </div>
+          <div class="amt ${r.type}">${r.type === 'income' ? '+' : ''}${fmtCur(r.amount, cur)}
+            ${cur !== base() ? `<small>≈ ${money(toBase(r))}</small>` : ''}</div>
+          <div class="btns">
+            <button class="icon edit" title="編輯">${ic('pencil')}</button>
+            <button class="icon del" title="刪除">${ic('x')}</button>
+          </div>
+        </div>`;
+      }).join('');
+  }).join('') || empty('錢包還沒動過～<br>記下第一筆吧！', 'fishcake');
 }
 
 // ===== 結算 =====
@@ -350,14 +550,14 @@ function computeSettle() {
   const P = Object.fromEntries(t.members.map(m => [m.id, { paid: 0, share: 0, recv: 0, recvShare: 0 }]));
   let expense = 0, income = 0;
   for (const r of t.money) {
-    const each = r.amount / r.split.length;
+    const amt = toBase(r), each = amt / r.split.length;
     if (r.type === 'income') {
-      income += r.amount;
-      if (P[r.payer]) P[r.payer].recv += r.amount;
+      income += amt;
+      if (P[r.payer]) P[r.payer].recv += amt;
       r.split.forEach(id => P[id] && (P[id].recvShare += each));
     } else {
-      expense += r.amount;
-      if (P[r.payer]) P[r.payer].paid += r.amount;
+      expense += amt;
+      if (P[r.payer]) P[r.payer].paid += amt;
       r.split.forEach(id => P[id] && (P[id].share += each));
     }
   }
@@ -374,7 +574,7 @@ function computeSettle() {
   let i = 0, j = 0;
   while (i < debtors.length && j < creditors.length) {
     const x = Math.min(debtors[i].amt, creditors[j].amt);
-    if (x > 0.004) transfers.push({ from: debtors[i].id, to: creditors[j].id, amt: x });
+    if (x >= 1) transfers.push({ from: debtors[i].id, to: creditors[j].id, amt: x }); // 不到 1 元的零頭略過
     debtors[i].amt -= x; creditors[j].amt -= x;
     if (debtors[i].amt < 0.005) i++;
     if (creditors[j].amt < 0.005) j++;
@@ -385,18 +585,26 @@ function computeSettle() {
 function renderSettle() {
   const t = trip(), { P, expense, income, transfers } = computeSettle();
   const net = expense - income, n = t.members.length || 1;
-  const days = t.start && t.end ? Math.round((new Date(t.end) - new Date(t.start)) / 864e5) + 1 : 0;
+  const days = t.start && t.end ? dayDiff(t.end, t.start) + 1 : 0;
   $('#settleStats').innerHTML = [
     [ic('coins') + '總支出', money(expense)], [ic('refund') + '收入 / 退款', money(income)], [ic('receipt') + '淨花費', money(net)],
     [ic('people') + '平均每人', money(net / n)],
-    days ? [ic('calendar') + '平均每日', money(net / days)] : null,
+    days > 0 ? [ic('calendar') + '平均每日', money(net / days)] : null,
     t.budget ? [ic('target') + '預算剩餘', `<span class="${t.budget - net < 0 ? 'neg' : 'pos'}">${money(t.budget - net)}</span>`] : null,
   ].filter(Boolean).map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
 
+  if (t.budget) {
+    const pct = net / t.budget * 100;
+    $('#budgetBox').innerHTML = `<div class="budget">
+      <div class="budget-top"><span>預算使用</span><b class="${pct > 100 ? 'neg' : ''}">${pct.toFixed(0)}%</b></div>
+      <div class="progress ${pct > 100 ? 'over' : ''}"><div style="width:${Math.min(100, pct)}%"></div></div>
+      <small class="muted">${money(net)} / ${money(t.budget)}</small></div>`;
+  } else $('#budgetBox').innerHTML = '';
+
   $('#personTable').innerHTML = t.members.length ? `<div class="people">${t.members.map(m => {
     const p = P[m.id], b = p.balance;
-    const badge = b > 0.004 ? `<span class="badge pos">應收 ${money(b)}</span>`
-      : b < -0.004 ? `<span class="badge neg">應付 ${money(-b)}</span>` : `<span class="badge">${ic('check')} 已平衡</span>`;
+    const badge = b >= 1 ? `<span class="badge pos">應收 ${money(b)}</span>`
+      : b <= -1 ? `<span class="badge neg">應付 ${money(-b)}</span>` : `<span class="badge">${ic('check')} 已平衡</span>`;
     return `<div class="person">
       <div class="person-head"><span class="person-name">${esc(m.name)}</span>
         <span class="person-net">${money(p.share - p.recvShare)}</span></div>
@@ -406,107 +614,255 @@ function renderSettle() {
       </div>
       ${badge}
     </div>`;
-  }).join('')}</div>` : empty('請先到「設定」新增成員', 'camera');
+  }).join('')}</div>` : empty('請先到「更多 → 成員」新增成員', 'camera');
 
   $('#transfers').innerHTML = transfers.map(x =>
     `<div class="item transfer"><div class="main"><b>${esc(memberName(x.from))}</b><span class="arrow">${ic('arrow')}</span><b>${esc(memberName(x.to))}</b></div>
      <div class="amt">${money(x.amt)}</div></div>`).join('') || empty('不需要轉帳，大家都打平了！', 'starfish');
 
-  const group = key => {
+  const expenses = t.money.filter(r => r.type !== 'income');
+  const group = keyFn => {
     const m = {};
-    t.money.filter(r => r.type !== 'income').forEach(r => m[r[key]] = (m[r[key]] || 0) + r.amount);
+    expenses.forEach(r => { const k = keyFn(r); m[k] = (m[k] || 0) + toBase(r); });
     return Object.entries(m);
   };
-  const cats = group('cat').sort((a, b) => b[1] - a[1]);
+  const cats = group(r => r.cat).sort((a, b) => b[1] - a[1]);
   const max = Math.max(1, ...cats.map(c => c[1]));
   $('#catTable').innerHTML = cats.length ? `<table><tr><th>分類</th><th>金額</th><th style="width:34%">占比</th></tr>
     ${cats.map(([c, v]) => `<tr><td>${catIc(c)} ${esc(c)}</td><td>${money(v)}</td>
-      <td><div class="bar" style="width:${Math.max(8, v / max * 100)}%" title="${(v / expense * 100).toFixed(1)}%"></div>
+      <td><div class="bar" style="width:${Math.max(8, v / max * 100)}%"></div>
       <small class="muted">${(v / expense * 100).toFixed(0)}%</small></td></tr>`).join('')}</table>` : '<p class="muted">尚無支出。</p>';
 
-  const byDay = group('date').sort((a, b) => a[0].localeCompare(b[0]));
+  const byCur = {};
+  expenses.forEach(r => { const c = r.cur || base(); byCur[c] = (byCur[c] || 0) + r.amount; });
+  const curs = Object.entries(byCur);
+  $('#curTable').innerHTML = curs.length ? `<table><tr><th>幣別</th><th>原幣金額</th><th>約 ${base()}</th></tr>
+    ${curs.map(([c, v]) => `<tr><td>${c === 'KRW' ? ic('kr') : c === 'JPY' ? ic('jp') : ic('coins')} ${c}</td>
+      <td>${fmtCur(v, c).replace(c + ' ', '')}</td><td>${money(v * rateOf(c))}</td></tr>`).join('')}</table>` : '<p class="muted">尚無支出。</p>';
+
+  const byDay = group(r => r.date).sort((a, b) => a[0].localeCompare(b[0]));
   $('#dayTable').innerHTML = byDay.length ? `<table><tr><th>日期</th><th>支出</th></tr>
     ${byDay.map(([d, v]) => `<tr><td>${fmtDate(d)}</td><td>${money(v)}</td></tr>`).join('')}</table>` : '<p class="muted">尚無支出。</p>';
+
+  const foreign = CURS().filter(c => c !== base());
+  $('#settleNote').textContent = foreign.length
+    ? `外幣依「更多 → 匯率」換算：${foreign.map(c => `1 ${c} = ${rateOf(c)} ${base()}`).join('、')}` : '';
 }
 
-// ===== 設定 =====
+function settleText() {
+  const t = trip(), { P, expense, income, transfers } = computeSettle();
+  const net = expense - income;
+  const lines = [`【${t.name}】旅費結算`, `淨花費 ${money(net)}（平均每人 ${money(net / (t.members.length || 1))}）`, '', '— 每人花費 —'];
+  t.members.forEach(m => lines.push(`${m.name}：${money(P[m.id].share - P[m.id].recvShare)}（付了 ${money(P[m.id].paid)}）`));
+  lines.push('', '— 轉帳 —');
+  if (transfers.length) transfers.forEach(x => lines.push(`${memberName(x.from)} → ${memberName(x.to)}：${money(x.amt)}`));
+  else lines.push('大家都打平了！');
+  return lines.join('\n');
+}
+$('#shareSettle').addEventListener('click', () => {
+  if (!trip().money.length) return toast('還沒有任何記帳');
+  shareText(settleText(), `${trip().name} 結算`);
+});
+
+// ===== 更多：訂位資訊 =====
+const BK = { flight: ['機票', 'plane'], ferry: ['渡輪', 'ferry'], hotel: ['住宿', 'bed'], ticket: ['票券', 'ticket'], other: ['其他', 'note'] };
+function bookingItem(b) {
+  const [label, icon] = BK[b.type] || BK.other;
+  return `<div class="item booking" data-id="${b.id}">
+    <div class="bk-ic">${ic(icon)}</div>
+    <div class="main">
+      <div class="title">${esc(b.title)}</div>
+      <div class="sub"><span class="tag">${label}</span>${b.date ? fmtDate(b.date) : ''}${b.note ? '　' + esc(b.note) : ''}</div>
+      ${b.code ? `<button type="button" class="code" data-code="${esc(b.code)}">${ic('copy')} ${esc(b.code)}</button>` : ''}
+    </div>
+    <div class="btns">
+      <button class="icon edit" title="編輯">${ic('pencil')}</button>
+      <button class="icon del" title="刪除">${ic('x')}</button>
+    </div>
+  </div>`;
+}
+function bookingClick(e) {
+  const code = e.target.closest('.code')?.dataset.code;
+  if (code) return copyText(code, `已複製訂位代號 ${esc(code)}`);
+  const id = e.target.closest('[data-id]')?.dataset.id; if (!id) return;
+  const b = trip().bookings.find(x => x.id === id);
+  if (e.target.matches('.del')) removeWithUndo('bookings', id, b.title);
+  else if (e.target.matches('.edit')) {
+    if (!$('#tab-settings').classList.contains('active')) goTab('settings');
+    const el = $('#bookingForm').elements;
+    for (const k of ['type', 'date', 'title', 'code', 'note', 'id']) el[k].value = b[k] || '';
+    $('#bookingSubmit').textContent = '更新';
+    setTimeout(() => scrollToEl($('#sec-booking')), 50);
+  }
+}
+$('#bookingList').addEventListener('click', bookingClick);
+$('#bookingForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target)), t = trip();
+  const rec = { type: f.type, date: f.date, title: f.title.trim(), code: f.code.trim(), note: f.note.trim() };
+  if (f.id) Object.assign(t.bookings.find(x => x.id === f.id), rec);
+  else t.bookings.push({ id: uid(), ...rec });
+  e.target.reset(); e.target.elements.id.value = ''; $('#bookingSubmit').textContent = '儲存';
+  save(); render(); toast(f.id ? '訂位已更新' : '訂位已儲存');
+});
+function renderBookings() {
+  const list = [...trip().bookings].sort((a, b) => (a.date || '9').localeCompare(b.date || '9'));
+  $('#bookingList').innerHTML = list.map(bookingItem).join('') ||
+    '<p class="muted small">機票、渡輪、住宿的訂位代號存在這裡，當天會出現在「即時」頁，點一下就能複製。</p>';
+}
+
+// ===== 更多：匯率 =====
+function renderRates() {
+  const t = trip();
+  $('#rateList').innerHTML = Object.entries(t.rates).map(([c, r]) => `
+    <div class="rate-row" data-cur="${c}">
+      <span class="rate-k">${c === 'KRW' ? ic('kr') : c === 'JPY' ? ic('jp') : ic('coins')} 1 ${c} =</span>
+      <input type="number" step="any" min="0" inputmode="decimal" value="${r}" aria-label="${c} 匯率">
+      <span>${base()}</span>
+      <button type="button" class="icon del" title="刪除">${ic('x')}</button>
+    </div>`).join('') || '<p class="muted small">還沒有外幣。</p>';
+  $('#rateInfo').textContent = t.ratesAt ? `匯率更新於 ${t.ratesAt}` : '目前是預設的約略匯率，出發前記得按「線上更新匯率」。';
+}
+$('#rateList').addEventListener('change', e => {
+  const cur = e.target.closest('[data-cur]')?.dataset.cur, v = parseFloat(e.target.value);
+  if (!cur || !(v > 0)) return;
+  trip().rates[cur] = v; save(); render(); toast(`已更新 ${cur} 匯率`);
+});
+$('#rateList').addEventListener('click', e => {
+  if (!e.target.matches('.del')) return;
+  const cur = e.target.closest('[data-cur]').dataset.cur, t = trip();
+  if (t.money.some(r => r.cur === cur)) return toast(`有記帳用到 ${cur}，不能刪除`);
+  const old = t.rates[cur]; delete t.rates[cur]; save(); render();
+  toast(`已刪除 ${cur}`, '復原', () => { trip().rates[cur] = old; save(); render(); });
+});
+$('#rateForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const el = e.target.elements, cur = el.cur.value.trim().toUpperCase(), r = parseFloat(el.rate.value);
+  if (!/^[A-Z]{3}$/.test(cur)) return toast('幣別請用 3 個英文字母，例如 USD');
+  if (cur === base()) return toast(`${cur} 是主要幣別`);
+  if (!(r > 0)) return toast('匯率要大於 0');
+  trip().rates[cur] = r; e.target.reset(); save(); render();
+});
+$('#rateFetch').addEventListener('click', async e => {
+  const btn = e.currentTarget, t = trip();
+  btn.disabled = true;
+  try {
+    const res = await fetch(`https://open.er-api.com/v6/latest/${encodeURIComponent(base())}`);
+    const data = await res.json();
+    if (data.result !== 'success') throw 0;
+    let n = 0;
+    for (const c of Object.keys(t.rates)) {
+      if (data.rates[c]) { t.rates[c] = +(1 / data.rates[c]).toPrecision(4); n++; }
+    }
+    t.ratesAt = new Date().toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' });
+    save(); render(); toast(`已更新 ${n} 個幣別的匯率`);
+  } catch { toast('更新失敗，請確認網路，或手動輸入匯率'); }
+  btn.disabled = false;
+});
+
+// ===== 更多：旅程設定 / 成員 / 資料 =====
+$('#tab-settings .jump').addEventListener('click', e => {
+  const id = e.target.closest('[data-jump]')?.dataset.jump;
+  if (id) scrollToEl(document.getElementById(id));
+});
 $('#tripForm').addEventListener('submit', e => {
   e.preventDefault();
-  const f = Object.fromEntries(new FormData(e.target));
-  Object.assign(trip(), { ...f, budget: +f.budget || 0 });
+  const f = Object.fromEntries(new FormData(e.target)), t = trip();
+  if (f.start && f.end && f.end < f.start) return toast('回程日不能早於出發日');
+  const cur = (f.currency || 'TWD').trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(cur)) return toast('幣別請用 3 個英文字母，例如 TWD');
+  if (cur !== t.currency && Object.keys(t.rates).length &&
+      !confirm(`改主要幣別後，匯率要改成「1 外幣 = ? ${cur}」，記得到匯率區更新。確定要改嗎？`)) return;
+  delete t.rates[cur];
+  Object.assign(t, { name: f.name.trim(), currency: cur, start: f.start, end: f.end, budget: +f.budget || 0 });
   save(); render(); flyBanner('已儲存');
 });
 $('#memberForm').addEventListener('submit', e => {
   e.preventDefault();
   const name = new FormData(e.target).get('name').trim();
   if (!name) return;
+  if (trip().members.some(m => m.name === name)) return toast(`已經有「${esc(name)}」了`);
   trip().members.push({ id: uid(), name });
   e.target.reset(); save(); render();
 });
 $('#memberList').addEventListener('click', e => {
   if (!e.target.matches('.del')) return;
   const id = e.target.closest('[data-id]').dataset.id, t = trip();
-  const used = t.money.some(r => r.payer === id || r.split.includes(id));
-  if (used && !confirm('此成員已有記帳紀錄，刪除後結算會不正確，確定刪除？')) return;
-  t.members = t.members.filter(m => m.id !== id); save(); render();
+  if (t.money.some(r => r.payer === id || r.split.includes(id)))
+    return toast('這位成員有記帳紀錄，請先修改或刪除相關紀錄');
+  removeWithUndo('members', id, memberName(id));
 });
-$('#exportBtn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(trip(), null, 2)], { type: 'application/json' });
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `${trip().name}.json` });
-  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-});
+const fileName = s => s.replace(/[\\/:*?"<>|]/g, '_');
+$('#exportBtn').addEventListener('click', () =>
+  saveFile(`${fileName(trip().name)}-${todayStr()}.json`, JSON.stringify(trip(), null, 2)));
+$('#exportAllBtn').addEventListener('click', () =>
+  saveFile(`旅遊手帳備份-${todayStr()}.json`, JSON.stringify({ app: 'travel-log', trips: db.trips }, null, 2)));
 $('#importFile').addEventListener('change', async e => {
   const file = e.target.files[0]; if (!file) return;
   try {
-    const t = JSON.parse(await file.text());
-    if (!t.members || !t.money) throw 0;
-    t.id = uid(); t.prep ||= []; t.plan ||= [];
-    db.trips.push(t); db.current = t.id; save(); render(); alert('已匯入為新旅程');
-  } catch { alert('檔案格式不正確'); }
+    const data = JSON.parse(await file.text());
+    const list = Array.isArray(data.trips) ? data.trips : [data];
+    if (!list.length || !list.every(t => t && Array.isArray(t.members) && Array.isArray(t.money))) throw 0;
+    list.forEach(t => { t.id = uid(); migrate(t); db.trips.push(t); });
+    db.current = list[list.length - 1].id;
+    save(); resetForms(); render(); toast(`已匯入 ${list.length} 個旅程`);
+  } catch { toast('檔案格式不正確'); }
   e.target.value = '';
 });
 $('#deleteTripBtn').addEventListener('click', () => {
-  if (!confirm(`確定刪除「${trip().name}」？此動作無法復原。`)) return;
+  if (!confirm(`確定刪除「${trip().name}」？此動作無法復原，建議先匯出備份。`)) return;
   db.trips = db.trips.filter(t => t.id !== db.current);
   if (!db.trips.length) db.trips.push(newTrip());
-  db.current = db.trips[0].id; save(); render();
+  db.current = db.trips[0].id; save(); resetForms(); render();
 });
 
 function renderSettings() {
   const t = trip(), el = $('#tripForm').elements;
-  for (const k of ['name', 'currency', 'start', 'end', 'budget']) el[k].value = t[k] || '';
+  if (!$('#tripForm').contains(document.activeElement))
+    for (const k of ['name', 'currency', 'start', 'end', 'budget']) el[k].value = t[k] || '';
   $('#memberList').innerHTML = t.members.map(m =>
     `<span class="chip" data-id="${m.id}">${esc(m.name)}<button class="icon del" title="刪除">${ic('x')}</button></span>`).join('')
     || '<span class="muted">尚無成員</span>';
+  renderBookings(); renderRates();
 }
 
 // ===== 共用渲染 =====
+function fillSelect(sel, options, fallback) {
+  const v = sel.value;
+  sel.innerHTML = options;
+  if (v && [...sel.options].some(o => o.value === v)) sel.value = v;
+  else if (fallback !== undefined) sel.value = fallback;
+}
 function render() {
   const t = trip();
   $('#tripSelect').innerHTML = db.trips.map(x =>
     `<option value="${x.id}" ${x.id === t.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
   $('#tripMeta').textContent = [t.start && t.end ? `${fmtDate(t.start)} ～ ${fmtDate(t.end)}` : '',
     t.members.length ? `${t.members.length} 人同行` : ''].filter(Boolean).join('　·　');
-  $$('.member-select').forEach(s => {
-    const v = s.value;
-    s.innerHTML = (s.name === 'owner' ? '<option value="">負責人</option>' : '') +
-      t.members.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
-    if (v) s.value = v;
-  });
+  $$('.member-select').forEach(s => fillSelect(s,
+    (s.name === 'owner' ? '<option value="">負責人</option>' : '') +
+    t.members.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')));
+  const curOpts = CURS().map(c => `<option value="${c}">${c}</option>`).join('');
+  $$('.cur-select').forEach(s => fillSelect(s, curOpts, guessCur($('#moneyForm').elements.date.value || todayStr())));
+  fillSelect($('#convCur'), curOpts, CURS().includes('KRW') ? 'KRW' : base());
   if (!$('#moneyForm').elements.id.value) {
     const boxes = $$('#splitBox input');
     renderSplitBox(boxes.length === t.members.length && boxes.length ? boxes.filter(i => i.checked).map(i => i.value) : null);
   }
-  renderLive(); renderPrep(); renderPlan(); renderMoney(); renderSettle(); renderSettings();
+  renderLive(); renderPrep(); renderPlan(); renderMoney(); renderSettle(); renderSettings(); renderConverter();
+}
+function resetForms() {
+  resetPlanForm();
+  $('#bookingForm').reset(); $('#bookingForm').elements.id.value = ''; $('#bookingSubmit').textContent = '儲存';
+  render(); resetMoneyForm();
 }
 
-$('#moneyForm').elements.date.value = todayStr();
-$('#planForm').elements.date.value = trip().start || todayStr();
-render();
+resetForms();
+navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261120140812';
+const APP_VERSION = '20261120142438';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -519,11 +875,15 @@ function isBusy() {
   const a = document.activeElement;
   return a && a.matches('input:not([type=checkbox]), select, textarea');
 }
+const ss = {
+  get: k => { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} },
+};
 
-async function applyUpdate() {
+async function applyUpdate(version) {
   if (updating) return;
   updating = true;
-  showUpdateToast('更新中…', false);
+  showUpdateToast(version, '更新中…', false);
   try {
     if (swReg) {
       await swReg.update();
@@ -531,10 +891,11 @@ async function applyUpdate() {
     }
     if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
   } catch {}
-  location.reload();
+  // 帶上版本參數，避開 GitHub CDN 上還沒過期的舊 index.html
+  location.replace(`${location.pathname}?v=${encodeURIComponent(version)}`);
 }
 
-function showUpdateToast(text = '有新版本囉！', withBtn = true) {
+function showUpdateToast(version, text = '有新版本囉！', withBtn = true) {
   let t = $('#updateToast');
   if (!t) {
     t = document.createElement('div');
@@ -544,7 +905,7 @@ function showUpdateToast(text = '有新版本囉！', withBtn = true) {
   }
   t.innerHTML = `${ic('sparkle')}<span>${text}</span>` +
     (withBtn ? `<button type="button" id="updateNow">立即更新</button><button type="button" class="icon" id="updateLater" title="稍後">${ic('x')}</button>` : '');
-  $('#updateNow')?.addEventListener('click', applyUpdate);
+  $('#updateNow')?.addEventListener('click', () => applyUpdate(version));
   $('#updateLater')?.addEventListener('click', () => t.remove());
 }
 
@@ -555,9 +916,11 @@ async function checkUpdate(auto = false) {
     if (!res.ok) return;
     const { version } = await res.json();
     if (!version || version === APP_VERSION) return;
-    // 剛打開 / 切回 App 且沒有在輸入 → 直接更新；否則跳提示
-    if (auto && !isBusy()) applyUpdate();
-    else if (!$('#updateToast')) showUpdateToast();
+    // 自動更新同一版本只試一次，避免 CDN 還沒更新時無限重新整理
+    if (auto && !isBusy() && ss.get('tl-update') !== version) {
+      ss.set('tl-update', version);
+      applyUpdate(version);
+    } else if (!$('#updateToast')) showUpdateToast(version);
   } catch {}
 }
 

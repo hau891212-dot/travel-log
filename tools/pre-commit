@@ -5,4 +5,5 @@ V=$(date +%Y%m%d%H%M%S)
 printf '{ "version": "%s" }\n' "$V" > version.json
 sed -i '' -E "s/^const APP_VERSION = '[^']*';/const APP_VERSION = '$V';/" app.js
 sed -i '' -E "s/^const CACHE = 'travel-log-[^']*';/const CACHE = 'travel-log-$V';/" sw.js
-git add version.json app.js sw.js
+sed -i '' -E "s/(style\.css|app\.js)\?v=[0-9a-z]+/\1?v=$V/g" index.html
+git add version.json app.js sw.js index.html
