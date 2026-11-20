@@ -1,61 +1,46 @@
+/* 胖西手寫體：只讀取「已安裝在這台裝置」的字型，不上傳字型檔（授權限制） */
+@font-face {
+  font-family: "Fluffy";
+  src: local("justinbeaverfont Fluffy-Proportioanl"), local("胖西手寫體 蓬蓬不等寬"), local("justinbeaverfont-Fluffy-Proportioanl");
+  font-display: swap;
+}
 /* ========== 色票：釜山海藍 × 甘川洞粉彩 × 福岡屋台紅 ========== */
 :root {
-  --paper: #fbf6ea;
-  --card: #fffdf7;
-  --ink: #2d2a32;
-  --muted: #7a7266;
-  --sky: #cfeaf6;
-  --sea: #6cc3e0;
-  --sea-deep: #2f7fa8;
+  color-scheme: light;
+  --paper: #fffaf1;
+  --card: #ffffff;
+  --ink: #5a4a44;
+  --muted: #9a8b80;
+  --sky: #e6f4fb;
+  --sea: #a8dcef;
+  --sea-deep: #4a9cc4;
   --foam: #ffffff;
-  --sun: #ffd25e;
+  --sun: #ffe08a;
   --cloud: #ffffff;
-  --coral: #ff8f85;
-  --yellow: #ffd866;
-  --mint: #8fdcc2;
-  --red: #e8504a;
-  --wood: #c99566;
-  --hill: #a9d98a;
-  --glass: #bfe3ef;
-  --pos: #2e8b57;
-  --neg: #d6453f;
-  --busan: #6cc3e0;
-  --fukuoka: #ff8f85;
-  --move: #ffd866;
+  --coral: #ffb8ac;
+  --yellow: #ffe7a3;
+  --mint: #c4eedf;
+  --red: #f4918a;
+  --wood: #e2bf98;
+  --hill: #cdeab4;
+  --glass: #d6eef6;
+  --pos: #3f9a6b;
+  --neg: #e0675f;
+  --busan: #bfe6f4;
+  --fukuoka: #ffd0c8;
+  --move: #fff0c2;
   --r1: 255px 15px 225px 15px / 15px 225px 15px 255px;
   --r2: 15px 225px 15px 255px / 255px 15px 225px 15px;
-  --shadow: 3px 3px 0 var(--ink);
-  --shadow-lg: 5px 5px 0 var(--ink);
+  --shadow: 3px 3px 0 color-mix(in srgb, var(--ink) 85%, transparent);
+  --shadow-lg: 4px 4px 0 color-mix(in srgb, var(--ink) 85%, transparent);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #1d1f2b;
-    --card: #282b3a;
-    --ink: #efe8d8;
-    --muted: #a9a294;
-    --sky: #1f2a4a;
-    --sea: #2c5d86;
-    --sea-deep: #8fd0ec;
-    --foam: #9cc8e4;
-    --sun: #fff0b3;
-    --cloud: #3c4260;
-    --coral: #e8786f;
-    --yellow: #e8bf4a;
-    --mint: #5fb59a;
-    --red: #e0564f;
-    --wood: #9b7350;
-    --hill: #4f7a4a;
-    --glass: #5f8fa8;
-    --pos: #6fd39a;
-    --neg: #ff8a84;
-  }
-}
+
 
 * { box-sizing: border-box; }
 html { background: var(--paper); }
 body {
   margin: 0; color: var(--ink); min-height: 100vh;
-  font: 16px/1.6 "Huninn", "Gaegu", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  font: 16px/1.6 "Fluffy", "Huninn", "PingFang TC", "Microsoft JhengHei", sans-serif;
   background:
     radial-gradient(circle, color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1.5px) 0 0 / 22px 22px,
     var(--paper);
@@ -87,7 +72,7 @@ a { color: var(--sea-deep); }
 .hero-art { display: block; width: 100%; height: auto; max-height: 260px; }
 .hero-art .sky { fill: var(--sky); }
 .hero-label {
-  font-family: "Gaegu", "Huninn", sans-serif; font-size: 20px; font-weight: 700;
+  font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 20px; font-weight: 700;
   fill: var(--card); stroke: var(--ink); stroke-width: 4px; paint-order: stroke; letter-spacing: 1px;
 }
 .hero-art .rays { transform-box: view-box; transform-origin: 400px 55px; animation: spin 24s linear infinite; }
@@ -220,8 +205,8 @@ button.icon:hover { color: var(--ink); transform: rotate(-12deg) scale(1.2); }
 .item.done .title { text-decoration: line-through wavy var(--coral); }
 .item.now { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); box-shadow: 4px 4px 0 var(--coral); }
 .item.past { opacity: .5; }
-.time { font-family: "Gaegu", "Huninn", sans-serif; font-size: 19px; font-weight: 700; min-width: 96px; }
-.amt { font-family: "Gaegu", "Huninn", sans-serif; font-size: 20px; font-weight: 700; white-space: nowrap; }
+.time { font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 19px; font-weight: 700; min-width: 96px; }
+.amt { font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 20px; font-weight: 700; white-space: nowrap; }
 .amt.income { color: var(--pos); }
 .overdue { color: var(--neg); }
 
@@ -249,7 +234,7 @@ input[type=checkbox]:checked {
 
 .day-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 26px 0 12px; font-size: 18px; }
 .day-badge {
-  font-family: "Gaegu", "Huninn", sans-serif; font-weight: 700; font-size: 20px; padding: 0 14px;
+  font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-weight: 700; font-size: 20px; padding: 0 14px;
   background: var(--coral); color: #2d2a32; border: 2.5px solid var(--ink); border-radius: var(--r2);
   transform: rotate(-3deg); box-shadow: var(--shadow);
 }
@@ -271,10 +256,10 @@ input[type=checkbox]:checked {
   position: relative; height: 100%; border-radius: inherit; transition: width .6s cubic-bezier(.3,1.4,.5,1);
   background: repeating-linear-gradient(-45deg, var(--coral) 0 8px, var(--yellow) 8px 16px);
 }
-.progress > div::after { content: "⛴️"; position: absolute; right: -14px; top: -16px; font-size: 22px; }
+.progress > div::after { content: ""; position: absolute; right: -14px; top: -18px; width: 28px; height: 28px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a4a44' stroke-width='1.8' stroke-linejoin='round'%3E%3Crect x='9' y='4.5' width='3' height='4' fill='%23ffb8ac'/%3E%3Crect x='6.5' y='8.5' width='10' height='5' fill='%23fff'/%3E%3Cpath d='M2 13.5H22L19 18.5H5Z' fill='%23fff'/%3E%3Cpath d='M3.5 15.8H20.5' stroke='%234a9cc4'/%3E%3C/svg%3E") center / contain no-repeat; }
 
 /* ========== 即時：登機證 ========== */
-.clock { font-family: "Gaegu", "Huninn", sans-serif; font-size: 20px; color: var(--muted); margin-bottom: 12px; }
+.clock { font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 20px; color: var(--muted); margin-bottom: 12px; }
 .pass {
   position: relative; display: flex; margin-bottom: 18px; background: var(--card);
   border: 2.5px solid var(--ink); border-radius: 18px; box-shadow: var(--shadow-lg);
@@ -293,11 +278,11 @@ input[type=checkbox]:checked {
 }
 .pass::before { top: -12px; clip-path: inset(50% 0 0 0); }
 .pass::after { bottom: -12px; clip-path: inset(0 0 50% 0); }
-.pass .label { font-family: "Gaegu", "Huninn", sans-serif; font-size: 15px; letter-spacing: 2px; color: var(--muted); }
+.pass .label { font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 15px; letter-spacing: 2px; color: var(--muted); }
 .pass .big { font-size: 26px; line-height: 1.3; margin: 4px 0; }
 .stub-k { font-size: 30px; }
 .stub-v { font-size: 18px; }
-.stub-t { font-family: "Gaegu", "Huninn", sans-serif; font-size: 22px; font-weight: 700; }
+.stub-t { font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 22px; font-weight: 700; }
 .pass.now { animation: wiggle 3.5s ease-in-out infinite; }
 @keyframes wiggle { 0%, 90%, 100% { transform: rotate(0); } 93% { transform: rotate(-1deg); } 96% { transform: rotate(1deg); } }
 .live-dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; background: var(--coral); animation: ping 1.4s ease-out infinite; }
@@ -317,7 +302,7 @@ input[type=checkbox]:checked {
 .stat:nth-child(even) { border-radius: var(--r2); transform: rotate(.8deg); }
 .stat:nth-child(odd) { transform: rotate(-.8deg); }
 .stat .k { font-size: 14px; color: var(--muted); }
-.stat .v { font-family: "Gaegu", "Huninn", sans-serif; font-size: 24px; font-weight: 700; }
+.stat .v { font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 24px; font-weight: 700; }
 
 .table-wrap { overflow-x: auto; }
 table {
@@ -334,7 +319,7 @@ th { font-size: 14px; color: var(--muted); font-weight: 400; background: color-m
 .transfer .arrow { display: inline-block; margin: 0 6px; animation: nudge 1.2s ease-in-out infinite; }
 @keyframes nudge { 50% { transform: translateX(5px); } }
 
-.foot { position: relative; z-index: 1; text-align: center; padding: 20px 16px 30px; color: var(--muted); font-family: "Gaegu", "Huninn", sans-serif; font-size: 18px; }
+.foot { position: relative; z-index: 1; text-align: center; padding: 20px 16px 30px; color: var(--muted); font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 18px; }
 
 /* ========== 轉場動畫 ========== */
 .tab.entering { animation: pageIn .6s cubic-bezier(.2,.9,.3,1.25) both; transform-origin: 50% 0; }
@@ -450,7 +435,7 @@ button.icon { min-width: 36px; min-height: 36px; }
 .person:nth-child(even) { border-radius: var(--r2); }
 .person-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .person-name { font-size: 20px; }
-.person-net { font-family: "Gaegu", "Huninn", sans-serif; font-size: 24px; font-weight: 700; }
+.person-net { font-family: "Fluffy", "Huninn", "PingFang TC", sans-serif; font-size: 24px; font-weight: 700; }
 .person-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; margin: 6px 0 8px; font-size: 14px; color: var(--muted); }
 .person-rows b { color: var(--ink); font-weight: 400; float: right; }
 .badge { display: inline-block; padding: 1px 12px; border: 2px solid var(--ink); border-radius: var(--r2); font-size: 15px; }
@@ -484,4 +469,42 @@ button.icon { min-width: 36px; min-height: 36px; }
 :root { --btn-text: #1b2a33; }
 button, .btn { color: var(--btn-text); }
 button.ghost, .btn.ghost { color: var(--ink); }
-@media (prefers-color-scheme: dark) { :root { --btn-text: #f7f2e6; } }
+
+
+
+/* ================= 淺色主題 + icon ================= */
+.ic {
+  width: 1.2em; height: 1.2em; flex: none; vertical-align: -0.25em; pointer-events: none;
+  fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; overflow: visible;
+}
+.tabs button .ic { width: 26px; height: 26px; margin-bottom: 1px; }
+.tabs button.active .ic { animation: hop .45s cubic-bezier(.3,1.8,.5,1); }
+@keyframes hop { 40% { transform: translateY(-5px) rotate(-8deg); } }
+button.icon .ic { width: 20px; height: 20px; }
+button.round .ic { width: 22px; height: 22px; }
+.stat .k .ic { margin-right: 4px; }
+.stub-k .ic { width: 38px; height: 38px; }
+.city .ic { width: 1.15em; height: 1.15em; margin-right: 2px; }
+.sub .ic { margin-right: 2px; }
+.item .title .ic { margin-right: 3px; }
+.foot .ic { width: 1.4em; height: 1.4em; }
+.transfer .arrow .ic { width: 22px; height: 22px; }
+td .ic { margin-right: 4px; }
+#prepStat .ic { width: 1.4em; height: 1.4em; }
+
+/* 淺色細節：按鈕粉彩、文字墨咖啡 */
+:root { --btn-text: var(--ink); }
+button, .btn { background: var(--sea); color: var(--btn-text); }
+.tabs { background: color-mix(in srgb, #ffffff 88%, transparent); }
+.tabs button { background: #fff; }
+.tabs button.active { background: var(--yellow); color: var(--ink); }
+.trip-picker select, .day-badge, .tag, .city, .pass-stub, .countdown, .chip.on, .flyer .banner { color: var(--ink); }
+.hero { border-bottom-width: 2.5px; }
+.hero-bar { border-top-width: 2.5px; }
+.hero-label { fill: #fff; }
+.item.now { background: color-mix(in srgb, var(--yellow) 35%, #fff); }
+.badge.pos { background: var(--mint); } .badge.neg { background: var(--coral); }
+body { background:
+  radial-gradient(circle, color-mix(in srgb, var(--sea) 45%, transparent) 1.2px, transparent 1.7px) 0 0 / 24px 24px,
+  var(--paper); }
+.doodles svg { opacity: .3; }

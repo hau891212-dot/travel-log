@@ -7,10 +7,11 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const pad = n => String(n).padStart(2, '0');
 const todayStr = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const WEEK = '日一二三四五六';
+const ic = name => `<svg class="ic"><use href="#ic-${name}"/></svg>`;
 const CITY = {
-  busan: { name: '釜山', flag: '🇰🇷' },
-  fukuoka: { name: '福岡', flag: '🇯🇵' },
-  move: { name: '移動', flag: '⛴️' },
+  busan: { name: '釜山', flag: ic('kr') },
+  fukuoka: { name: '福岡', flag: ic('jp') },
+  move: { name: '移動', flag: ic('ferry') },
 };
 const cityTag = c => CITY[c] ? `<span class="city ${c}">${CITY[c].flag} ${CITY[c].name}</span>` : '';
 const empty = (msg, icon = 'suitcase') =>
@@ -104,8 +105,8 @@ function renderPrep() {
   const list = trip().prep;
   const done = list.filter(p => p.done).length;
   $('#prepBar').style.width = list.length ? (done / list.length * 100) + '%' : '0';
-  $('#prepStat').textContent = list.length
-    ? (done === list.length ? `全部完成 🎉 可以出發了！` : `已完成 ${done} / ${list.length}`)
+  $('#prepStat').innerHTML = list.length
+    ? (done === list.length ? `${ic('check')} 全部完成，可以出發了！` : `已完成 ${done} / ${list.length}`)
     : '';
   const today = todayStr();
   const sorted = [...list].sort((a, b) => a.done - b.done || (a.due || '9').localeCompare(b.due || '9'));
@@ -115,11 +116,11 @@ function renderPrep() {
       <div class="main">
         <div class="title">${esc(p.text)}</div>
         <div class="sub"><span class="tag">${esc(p.cat)}</span>
-          ${p.owner ? '👤 ' + esc(memberName(p.owner)) : ''}
-          ${p.due ? `<span class="${!p.done && p.due < today ? 'overdue' : ''}">　⏰ ${fmtDate(p.due)}</span>` : ''}
+          ${p.owner ? ic('user') + esc(memberName(p.owner)) : ''}
+          ${p.due ? `<span class="${!p.done && p.due < today ? 'overdue' : ''}">　${ic('alarm')}${fmtDate(p.due)}</span>` : ''}
         </div>
       </div>
-      <button class="icon del" title="刪除">✕</button>
+      <button class="icon del" title="刪除">${ic('x')}</button>
     </div>`).join('') || empty('行李箱還空空的～<br>先列出出發前要做的事吧！', 'suitcase');
 }
 
@@ -157,7 +158,7 @@ $('#todayList').addEventListener('click', planClick);
 
 const sortedPlan = () => [...trip().plan].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 const mapLink = place => place
-  ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}" target="_blank" rel="noopener">📍${esc(place)}</a>` : '';
+  ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}" target="_blank" rel="noopener">${ic('pin')}${esc(place)}</a>` : '';
 
 function planItem(p, cls = '') {
   return `<div class="item ${cls} city-${p.city || 'none'}" data-id="${p.id}">
@@ -167,8 +168,8 @@ function planItem(p, cls = '') {
       <div class="sub">${mapLink(p.place)}${p.note ? ' ' + esc(p.note) : ''}</div>
     </div>
     <div class="btns">
-      <button class="icon edit" title="編輯">✎</button>
-      <button class="icon del" title="刪除">✕</button>
+      <button class="icon edit" title="編輯">${ic('pencil')}</button>
+      <button class="icon del" title="刪除">${ic('x')}</button>
     </div>
   </div>`;
 }
@@ -181,7 +182,7 @@ function renderPlan() {
     const n = start ? Math.round((new Date(d) - new Date(start)) / 864e5) + 1 : null;
     const cities = [...new Set(byDay[d].map(p => p.city).filter(c => CITY[c]))];
     return `<div class="day-head">
-        <span class="day-badge">${n > 0 ? `Day ${n}` : '📅'}</span>
+        <span class="day-badge">${n > 0 ? `Day ${n}` : ic('calendar')}</span>
         <span>${fmtDate(d)}</span>
         ${cities.map(c => `<span class="stamp ${c}">${CITY[c].name}</span>`).join('')}
         <span class="muted count">${byDay[d].length} 站</span>
@@ -230,7 +231,7 @@ function pass({ label, title, sub = '', extra = '', city = '', stubTop, stubMid,
 
 function renderLive() {
   const now = new Date(), t = trip();
-  $('#clock').textContent = `🕰️ ${fmtDate(todayStr(now))} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  $('#clock').innerHTML = `${ic('clock')} ${fmtDate(todayStr(now))} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const { todays, current, next, nowMin, endOf } = liveState(now);
   let html = '';
 
@@ -239,7 +240,7 @@ function renderLive() {
     html += pass({
       label: 'DEPARTURE · 距離出發', title: `還有 ${d} 天！`,
       sub: `前置作業完成 ${t.prep.filter(p => p.done).length} / ${t.prep.length}`,
-      stubTop: '✈️', stubMid: 'D-day', stubBot: `D-${d}`,
+      stubTop: ic('plane'), stubMid: 'D-day', stubBot: `D-${d}`,
     });
   }
   if (current) {
@@ -251,7 +252,7 @@ function renderLive() {
       label: '<span class="live-dot"></span>NOW · 正在進行', title: esc(current.title),
       sub: `${esc(current.start)}${current.end ? '–' + esc(current.end) : ''}　${mapLink(current.place)}`,
       extra: `${current.note ? `<div>${esc(current.note)}</div>` : ''}<div class="progress"><div style="width:${pct}%"></div></div>`,
-      stubTop: c ? c.flag : '📍', stubMid: c ? c.name : '行程', stubBot: esc(current.start),
+      stubTop: c ? c.flag : ic('pin'), stubMid: c ? c.name : '行程', stubBot: esc(current.start),
     });
   }
   if (next) {
@@ -260,8 +261,8 @@ function renderLive() {
       city: next.city,
       label: 'NEXT · 下一站', title: esc(next.title),
       sub: `${fmtDate(next.date)} ${esc(next.start)}　${mapLink(next.place)}`,
-      extra: `<div class="countdown">⏳ ${countdown(next, now)}</div>`,
-      stubTop: c ? c.flag : '📍', stubMid: c ? c.name : '行程', stubBot: esc(next.start),
+      extra: `<div class="countdown">${ic('hourglass')} ${countdown(next, now)}</div>`,
+      stubTop: c ? c.flag : ic('pin'), stubMid: c ? c.name : '行程', stubBot: esc(next.start),
     });
   }
   $('#liveBox').innerHTML = html || empty('目前沒有進行中或即將到來的行程<br>去「行程」排一下吧！', 'camera');
@@ -269,7 +270,7 @@ function renderLive() {
   $('#todayList').innerHTML = todays.length
     ? `<div class="timeline">${todays.map((p, i) =>
         planItem(p, p === current ? 'now' : endOf(p, i) <= nowMin ? 'past' : '')).join('')}</div>`
-    : empty('今天沒有排行程，自由活動 🌊', 'umbrella');
+    : empty('今天沒有排行程，自由活動～', 'umbrella');
 }
 setInterval(() => { if ($('#tab-live').classList.contains('active')) renderLive(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) renderLive(); });
@@ -319,7 +320,8 @@ $('#moneyList').addEventListener('click', e => {
 });
 $('#moneyFilter').addEventListener('change', renderMoney);
 
-const CAT_ICON = { 餐飲: '🍜', 交通: '🚇', 住宿: '🏨', 門票: '🎟️', 購物: '🛍️', 前置費用: '📝', 其他: '✨' };
+const CAT_ICON = { 餐飲: 'bowl', 交通: 'train', 住宿: 'bed', 門票: 'ticket', 購物: 'bag', 前置費用: 'note', 其他: 'sparkle' };
+const catIc = c => ic(CAT_ICON[c] || 'sparkle');
 
 function renderMoney() {
   const t = trip(), cat = $('#moneyFilter').value;
@@ -330,14 +332,14 @@ function renderMoney() {
   $('#moneyList').innerHTML = list.map(r => `
     <div class="item" data-id="${r.id}">
       <div class="main">
-        <div class="title">${CAT_ICON[r.cat] || '✨'} ${esc(r.title)}</div>
+        <div class="title">${catIc(r.cat)} ${esc(r.title)}</div>
         <div class="sub">${fmtDate(r.date)}　${r.type === 'income' ? '收' : '付'}：${esc(memberName(r.payer))}
           ・${r.split.length === t.members.length ? '全員分' : r.split.map(memberName).map(esc).join('、')}</div>
       </div>
       <div class="amt ${r.type}">${r.type === 'income' ? '+' : ''}${money(r.amount)}</div>
       <div class="btns">
-        <button class="icon edit" title="編輯">✎</button>
-        <button class="icon del" title="刪除">✕</button>
+        <button class="icon edit" title="編輯">${ic('pencil')}</button>
+        <button class="icon del" title="刪除">${ic('x')}</button>
       </div>
     </div>`).join('') || empty('錢包還沒動過～<br>記下第一筆吧！', 'fishcake');
 }
@@ -385,16 +387,16 @@ function renderSettle() {
   const net = expense - income, n = t.members.length || 1;
   const days = t.start && t.end ? Math.round((new Date(t.end) - new Date(t.start)) / 864e5) + 1 : 0;
   $('#settleStats').innerHTML = [
-    ['💸 總支出', money(expense)], ['💰 收入 / 退款', money(income)], ['🧾 淨花費', money(net)],
-    ['👥 平均每人', money(net / n)],
-    days ? ['📅 平均每日', money(net / days)] : null,
-    t.budget ? ['🎯 預算剩餘', `<span class="${t.budget - net < 0 ? 'neg' : 'pos'}">${money(t.budget - net)}</span>`] : null,
+    [ic('coins') + '總支出', money(expense)], [ic('refund') + '收入 / 退款', money(income)], [ic('receipt') + '淨花費', money(net)],
+    [ic('people') + '平均每人', money(net / n)],
+    days ? [ic('calendar') + '平均每日', money(net / days)] : null,
+    t.budget ? [ic('target') + '預算剩餘', `<span class="${t.budget - net < 0 ? 'neg' : 'pos'}">${money(t.budget - net)}</span>`] : null,
   ].filter(Boolean).map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
 
   $('#personTable').innerHTML = t.members.length ? `<div class="people">${t.members.map(m => {
     const p = P[m.id], b = p.balance;
     const badge = b > 0.004 ? `<span class="badge pos">應收 ${money(b)}</span>`
-      : b < -0.004 ? `<span class="badge neg">應付 ${money(-b)}</span>` : `<span class="badge">已平衡 ✓</span>`;
+      : b < -0.004 ? `<span class="badge neg">應付 ${money(-b)}</span>` : `<span class="badge">${ic('check')} 已平衡</span>`;
     return `<div class="person">
       <div class="person-head"><span class="person-name">${esc(m.name)}</span>
         <span class="person-net">${money(p.share - p.recvShare)}</span></div>
@@ -407,8 +409,8 @@ function renderSettle() {
   }).join('')}</div>` : empty('請先到「設定」新增成員', 'camera');
 
   $('#transfers').innerHTML = transfers.map(x =>
-    `<div class="item transfer"><div class="main"><b>${esc(memberName(x.from))}</b><span class="arrow">➜</span><b>${esc(memberName(x.to))}</b></div>
-     <div class="amt">${money(x.amt)}</div></div>`).join('') || empty('不需要轉帳，大家都打平了 🎉', 'starfish');
+    `<div class="item transfer"><div class="main"><b>${esc(memberName(x.from))}</b><span class="arrow">${ic('arrow')}</span><b>${esc(memberName(x.to))}</b></div>
+     <div class="amt">${money(x.amt)}</div></div>`).join('') || empty('不需要轉帳，大家都打平了！', 'starfish');
 
   const group = key => {
     const m = {};
@@ -418,7 +420,7 @@ function renderSettle() {
   const cats = group('cat').sort((a, b) => b[1] - a[1]);
   const max = Math.max(1, ...cats.map(c => c[1]));
   $('#catTable').innerHTML = cats.length ? `<table><tr><th>分類</th><th>金額</th><th style="width:34%">占比</th></tr>
-    ${cats.map(([c, v]) => `<tr><td>${CAT_ICON[c] || '✨'} ${esc(c)}</td><td>${money(v)}</td>
+    ${cats.map(([c, v]) => `<tr><td>${catIc(c)} ${esc(c)}</td><td>${money(v)}</td>
       <td><div class="bar" style="width:${Math.max(8, v / max * 100)}%" title="${(v / expense * 100).toFixed(1)}%"></div>
       <small class="muted">${(v / expense * 100).toFixed(0)}%</small></td></tr>`).join('')}</table>` : '<p class="muted">尚無支出。</p>';
 
@@ -432,7 +434,7 @@ $('#tripForm').addEventListener('submit', e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
   Object.assign(trip(), { ...f, budget: +f.budget || 0 });
-  save(); render(); flyBanner('已儲存 ✓');
+  save(); render(); flyBanner('已儲存');
 });
 $('#memberForm').addEventListener('submit', e => {
   e.preventDefault();
@@ -474,7 +476,7 @@ function renderSettings() {
   const t = trip(), el = $('#tripForm').elements;
   for (const k of ['name', 'currency', 'start', 'end', 'budget']) el[k].value = t[k] || '';
   $('#memberList').innerHTML = t.members.map(m =>
-    `<span class="chip" data-id="${m.id}">${esc(m.name)}<button class="icon del" title="刪除">✕</button></span>`).join('')
+    `<span class="chip" data-id="${m.id}">${esc(m.name)}<button class="icon del" title="刪除">${ic('x')}</button></span>`).join('')
     || '<span class="muted">尚無成員</span>';
 }
 
@@ -483,7 +485,7 @@ function render() {
   const t = trip();
   $('#tripSelect').innerHTML = db.trips.map(x =>
     `<option value="${x.id}" ${x.id === t.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
-  $('#tripMeta').textContent = [t.start && t.end ? `${fmtDate(t.start)} → ${fmtDate(t.end)}` : '',
+  $('#tripMeta').textContent = [t.start && t.end ? `${fmtDate(t.start)} ～ ${fmtDate(t.end)}` : '',
     t.members.length ? `${t.members.length} 人同行` : ''].filter(Boolean).join('　·　');
   $$('.member-select').forEach(s => {
     const v = s.value;

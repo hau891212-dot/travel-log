@@ -1,5 +1,5 @@
 // 離線快取：網路優先，失敗時用快取（出國沒網路也能開）
-const CACHE = 'travel-log-v2';
+const CACHE = 'travel-log-v3';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', e => {
