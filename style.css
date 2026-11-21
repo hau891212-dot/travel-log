@@ -1011,3 +1011,6 @@ th { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); }
 .pub-auto { display: none; grid-column: 1 / -1; margin: 0; }
 #planForm.surprise-on.auto-pub .pub-toggle { display: none !important; }
 #planForm.surprise-on.auto-pub .pub-auto { display: flex; align-items: center; gap: 6px; }
+/* 航班卡：沒有編輯按鈕（旅伴 / 驚喜模式）時也維持上下排列 */
+.item.flight > .fl-top, .item.flight > .fl-route, .item.flight > .sub { grid-column: 1; }
+.no-edit .item.flight, .item.flight:not(:has(.btns)) { grid-template-columns: minmax(0, 1fr); }

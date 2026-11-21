@@ -1424,7 +1424,7 @@ navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261121224432';
+const APP_VERSION = '20261121224824';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
