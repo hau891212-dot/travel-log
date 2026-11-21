@@ -281,7 +281,7 @@ $('#planForm').addEventListener('submit', e => {
   if (f.kind !== 'spot' && !f.from && !f.to) return toast('請填出發地或目的地');
   if (f.end && f.end < f.start && !confirm('結束時間比開始早（跨午夜）？確定要儲存嗎？')) return;
   // 依類型清掉不用的欄位
-  const rec = { kind: f.kind, date: f.date, start: f.start, end: f.end || '', note: f.note || '' };
+  const rec = { kind: f.kind, date: f.date, start: f.start, end: f.end || '', note: f.note || '', ...(f.pub ? { pub: true } : {}) };
   if (f.kind === 'spot') Object.assign(rec, { city: f.city, title: f.title, place: f.place || '' });
   else Object.assign(rec, { from: f.from, to: f.to, code: f.kind === 'flight' ? (f.code || '').toUpperCase() : (f.code || ''), title: '', place: '',
     city: f.kind === 'flight' ? 'move' : f.city, ...(f.kind === 'transit' ? { mode: f.mode } : {}) });
@@ -301,6 +301,7 @@ function editPlan(id) {
   setPlanKind(kind);
   for (const k of ['city', 'date', 'start', 'end', 'title', 'place', 'note', 'from', 'to', 'code', 'id']) el[k].value = p[k] || '';
   el.mode.value = p.mode || 'train';
+  el.pub.checked = !!p.pub;
   setCodeHint();
   setPlanEditing(true);
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -329,6 +330,29 @@ $('#planFilter').addEventListener('click', e => {
 });
 
 const sortedPlan = () => [...trip().plan].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+
+// ===== 驚喜模式：只有規劃者看得到未來的行程，旅伴當天 00:00 才解鎖 =====
+// 誰是規劃者記在這支手機（db.planner），不會同步；其他裝置輸入密碼即可成為規劃者
+let surprisePreview = false;
+const surpriseOn = (t = trip()) => !!t.surprise?.on;
+const isPlanner = (t = trip()) => !surpriseOn(t) || (!!db.planner?.[t.id] && !surprisePreview);
+const isLocked = (p, t = trip()) => !isPlanner(t) && !p.pub && p.date > todayStr();
+const lockedCount = (t = trip()) => t.plan.filter(p => !p.pub && p.date > todayStr()).length;
+async function pinHash(pin, salt) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function unlockIn(date) {
+  let m = Math.max(0, Math.round((new Date(date + 'T00:00') - new Date()) / 6e4));
+  const d = Math.floor(m / 1440); m -= d * 1440;
+  const h = Math.floor(m / 60); m -= h * 60;
+  return [d && `${d} 天`, h && `${h} 小時`, `${m} 分`].filter(Boolean).join(' ');
+}
+const lockedCard = (d, n) => `<div class="locked-day">
+  <span class="ld-ic">${ic('gift')}</span>
+  <div><b>${n} 個神秘行程</b><small>${fmtDate(d)} 00:00 解鎖・還有 ${unlockIn(d)}</small></div>
+  ${ic('lock')}
+</div>`;
 const mapLink = place => place
   ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}" target="_blank" rel="noopener">${ic('pin')}${esc(place)}</a>` : '';
 // Google 地圖在韓國無法導航，釜山的行程多給一個 Naver 地圖
@@ -376,9 +400,19 @@ function planItem(p, cls = '') {
 }
 
 function renderPlan() {
+  const planner = isPlanner(), on = surpriseOn();
+  $('#planForm').hidden = !planner;
+  $('#planForm').classList.toggle('surprise-on', on);
+  $('#surpriseBanner').innerHTML = !on ? '' : planner
+    ? `<div class="s-banner">${ic('gift')}<span>驚喜模式中：旅伴看不到 <b>${lockedCount()}</b> 個未來行程，每天 00:00 解鎖當天的</span><button type="button" class="link" data-sp="preview">旅伴視角</button></div>`
+    : surprisePreview
+      ? `<div class="s-banner preview">${ic('people')}<span>旅伴視角預覽中</span><button type="button" class="link" data-sp="endpreview">結束預覽</button></div>`
+      : `<div class="s-banner">${ic('gift')}<span>行程是驚喜！每天 00:00 解鎖當天的行程</span></div>`;
   const all = sortedPlan();
-  const nMove = all.filter(isMove).length, nSpot = all.length - nMove;
-  $('#planFilter').innerHTML = all.length ? [['all', '全部', all.length, 'map'], ['spot', '景點', nSpot, 'pin'], ['move', '航班・交通', nMove, 'plane']]
+  $('#planList').classList.toggle('no-edit', !planner); $('#todayList').classList.toggle('no-edit', !planner);
+  const vis = all.filter(p => !isLocked(p));
+  const nMove = vis.filter(isMove).length, nSpot = vis.length - nMove;
+  $('#planFilter').innerHTML = all.length ? [['all', '全部', vis.length, 'map'], ['spot', '景點', nSpot, 'pin'], ['move', '航班・交通', nMove, 'plane']]
     .map(([v, l, n, i]) => `<button type="button" data-view="${v}" class="${planView === v ? 'on' : ''}">${ic(i)}${l}<small>${n}</small></button>`).join('') : '';
   const list = all.filter(p => planView === 'all' || (planView === 'move') === isMove(p));
   const byDay = {};
@@ -388,16 +422,17 @@ function renderPlan() {
   $('#dayChips').innerHTML = days.length > 1 ? days.map(d =>
     `<button type="button" class="chip ${d === today ? 'on' : ''}" data-day="${d}">${dayNo(d) > 0 ? `D${dayNo(d)} ` : ''}${fmtDate(d).replace(/（.）/, '')}</button>`).join('') : '';
   $('#planList').innerHTML = days.map(d => {
-    const n = dayNo(d), items = byDay[d];
-    const cities = [...new Set(items.map(p => p.city).filter(c => c && c !== 'move' && CITY[c]))];
+    const n = dayNo(d), allItems = byDay[d], items = allItems.filter(p => !isLocked(p)), hidden = allItems.length - items.length;
+    const cities = hidden ? [] : [...new Set(items.map(p => p.city).filter(c => c && c !== 'move' && CITY[c]))];
     const s = items.filter(p => !isMove(p)).length, m = items.length - s;
     return `<div class="day-head" id="day-${d}">
         <span class="day-badge">${n > 0 ? `Day ${n}` : ic('calendar')}</span>
         <span>${fmtDate(d)}</span>
         ${cities.map(c => `<span class="stamp ${c}">${CITY[c].name}</span>`).join('')}
-        <span class="muted count">${[s && `${s} 站`, m && `${m} 段交通`].filter(Boolean).join('・')}</span>
+        <span class="muted count">${hidden ? ic('lock') + ' 未解鎖' : [s && `${s} 站`, m && `${m} 段交通`].filter(Boolean).join('・')}</span>
       </div>
-      <div class="timeline">${items.map(p => planItem(p)).join('')}</div>`;
+      ${items.length ? `<div class="timeline">${items.map(p => planItem(p, planner && on && !p.pub && d > today ? 'secret' : '')).join('')}</div>` : ''}
+      ${hidden ? lockedCard(d, hidden) : ''}`;
   }).join('') || (all.length ? empty('這個分類還沒有東西', 'compass') : empty('還沒有行程～<br>從上面加入第一站吧！', 'torii'));
 }
 
@@ -477,7 +512,14 @@ function renderLive() {
       ...stubOf(current), stubBot: esc(current.start),
     });
   }
-  if (next) {
+  if (next && isLocked(next)) {
+    html += pass({
+      cls: 'mystery', label: 'NEXT · 神秘行程', title: '還不能說的驚喜',
+      sub: `${fmtDate(next.date)} 00:00 解鎖`,
+      extra: `<div class="countdown">${ic('hourglass')} 還有 ${unlockIn(next.date)}</div>`,
+      stubTop: ic('gift'), stubMid: '驚喜', stubBot: ic('lock'),
+    });
+  } else if (next) {
     html += pass({
       city: next.city, cls: kindOf(next),
       label: `NEXT · ${kindOf(next) === 'flight' ? '下一班飛機' : isMove(next) ? '下一段交通' : '下一站'}`, title: esc(planTitle(next)),
@@ -728,7 +770,7 @@ $('#bookingForm').addEventListener('submit', e => {
   save(); render(); toast(f.id ? '訂位已更新' : '訂位已儲存');
 });
 function renderBookings() {
-  const list = [...trip().bookings].sort((a, b) => (a.date || '9').localeCompare(b.date || '9'));
+  const list = [...trip().bookings].filter(b => isPlanner() || !b.date || b.date <= todayStr()).sort((a, b) => (a.date || '9').localeCompare(b.date || '9'));
   $('#bookingList').innerHTML = list.map(bookingItem).join('') ||
     '<p class="muted small">機票、渡輪、住宿的訂位代號存在這裡，當天會出現在「即時」頁，點一下就能複製。</p>';
 }
@@ -849,6 +891,66 @@ function renderSettings() {
   renderBookings(); renderRates();
 }
 
+
+// ===== 更多：驚喜模式 =====
+function renderSurprise() {
+  const t = trip(), box = $('#surpriseBox'); if (!box) return;
+  const on = surpriseOn(t), planner = !!db.planner?.[t.id];
+  box.innerHTML = !on ? `
+    <div class="s-head">${ic('gift')}<b>讓旅伴當天才知道行程</b></div>
+    <p class="muted small">開啟後只有你看得到未來的行程；旅伴的手機會顯示「神秘行程」，每天 00:00 自動解鎖當天的。航班這類大家必須知道的，可以在行程勾「不隱藏這一項」。</p>
+    <form class="s-form" data-sp-form="on">
+      <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="設定規劃者密碼（4–8 位數字）" required autocomplete="new-password">
+      <button>開啟驚喜模式</button>
+    </form>`
+  : planner ? `
+    <div class="s-head">${ic('gift')}<b>驚喜模式開啟中・你是規劃者</b></div>
+    <p class="muted small">旅伴目前看不到 <b>${lockedCount(t)}</b> 個行程。你的其他裝置（例如電腦）要看完整行程，在那台按「我是規劃者」輸入密碼即可。</p>
+    <div class="actions">
+      <button type="button" class="ghost" data-sp="preview">${ic('people')} 旅伴視角預覽</button>
+      <button type="button" class="ghost" data-sp="off">關閉驚喜模式</button>
+    </div>`
+  : `
+    <div class="s-head">${ic('lock')}<b>行程是驚喜</b></div>
+    <p class="muted small">規劃者把行程藏起來了，每天 00:00 會解鎖當天的行程。</p>
+    <form class="s-form" data-sp-form="claim">
+      <input name="pin" type="password" inputmode="numeric" maxlength="8" placeholder="我是規劃者：輸入密碼" required autocomplete="current-password">
+      <button>解鎖</button>
+    </form>`;
+}
+async function surpriseSubmit(form) {
+  const t = trip(), pin = form.elements.pin.value.trim();
+  if (form.dataset.spForm === 'on') {
+    if (!/^\d{4,8}$/.test(pin)) return toast('密碼請用 4–8 位數字');
+    const salt = uid() + uid();
+    t.surprise = { on: true, salt, hash: await pinHash(pin, salt) };
+    (db.planner ||= {})[t.id] = true;
+    save(); render(); flyBanner('驚喜模式開啟');
+    toast('記好密碼喔！換手機時要用它解鎖');
+  } else {
+    if (await pinHash(pin, t.surprise.salt) !== t.surprise.hash) { form.elements.pin.value = ''; return toast('密碼不對'); }
+    (db.planner ||= {})[t.id] = true; surprisePreview = false;
+    save(true); render(); toast('已解鎖，你是規劃者');
+  }
+}
+document.addEventListener('submit', e => {
+  const f = e.target.closest('[data-sp-form]'); if (!f) return;
+  e.preventDefault(); surpriseSubmit(f);
+});
+document.addEventListener('click', e => {
+  const act = e.target.closest('[data-sp]')?.dataset.sp; if (!act) return;
+  const t = trip();
+  if (act === 'preview') { surprisePreview = true; render(); goTab('plan'); toast('現在看到的是旅伴的畫面'); }
+  else if (act === 'endpreview') { surprisePreview = false; render(); }
+  else if (act === 'off') {
+    if (!confirm('關閉後旅伴馬上就能看到全部行程，確定嗎？')) return;
+    delete t.surprise; save(); render(); toast('已關閉驚喜模式');
+  }
+});
+// 過了午夜要解鎖新的一天
+let lastDay = todayStr();
+setInterval(() => { if (todayStr() !== lastDay) { lastDay = todayStr(); render(); } }, 60000);
+
 // ===== 共用渲染 =====
 function fillSelect(sel, options, fallback) {
   const v = sel.value;
@@ -868,7 +970,7 @@ function render() {
   const curOpts = CURS().map(c => `<option value="${c}">${c}</option>`).join('');
   $$('.cur-select').forEach(s => fillSelect(s, curOpts, guessCur($('#moneyForm').elements.date.value || todayStr())));
   fillSelect($('#convCur'), curOpts, CURS().includes('KRW') ? 'KRW' : base());
-  renderCloud();
+  renderCloud(); renderSurprise();
   renderLive(); renderPrep(); renderPlan(); renderMoney(); renderSettle(); renderSettings(); renderConverter();
 }
 function resetForms() {
@@ -1318,7 +1420,7 @@ navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261121003614';
+const APP_VERSION = '20261121223909';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

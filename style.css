@@ -974,3 +974,37 @@ th { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); }
 .g-step.on .g-n { background: var(--red); color: #fff; }
 @media (prefers-reduced-motion: reduce) { .g-step { opacity: 1; } }
 .member-row { grid-template-columns: minmax(0, 1fr) auto; }
+
+/* ===== 驚喜模式 ===== */
+.pub-toggle { display: none !important; grid-column: 1 / -1; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+#planForm.surprise-on .pub-toggle { display: flex !important; }
+.s-banner { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding: 8px 12px; font-size: 14px;
+  background: color-mix(in srgb, var(--coral) 28%, var(--card)); border: 2px dashed var(--line); border-radius: var(--r1); }
+.s-banner.preview { background: color-mix(in srgb, var(--sky) 60%, var(--card)); }
+.s-banner span { flex: 1; }
+.s-banner > .ic { width: 24px; height: 24px; }
+.s-banner .link { font-size: 14px; white-space: nowrap; }
+.locked-day {
+  position: relative; display: flex; align-items: center; gap: 12px; margin: 0 0 10px 6px; padding: 14px; overflow: hidden;
+  border: 2px dashed var(--line); border-radius: var(--r1);
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--coral) 22%, var(--card)) 0 12px, color-mix(in srgb, var(--yellow) 25%, var(--card)) 12px 24px);
+}
+.locked-day > div { flex: 1; }
+.locked-day b { display: block; font-weight: 400; font-size: 17px; }
+.locked-day small { color: var(--muted); }
+.ld-ic { flex: none; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: var(--card); border: 2px solid var(--line); animation: giftWiggle 2.8s ease-in-out infinite; }
+.ld-ic .ic { width: 30px; height: 30px; }
+.locked-day > .ic { width: 22px; height: 22px; opacity: .6; }
+@keyframes giftWiggle { 0%, 80%, 100% { transform: rotate(0); } 85% { transform: rotate(-12deg) scale(1.08); } 90% { transform: rotate(10deg) scale(1.08); } 95% { transform: rotate(-6deg); } }
+.item.secret { box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 55%, transparent), var(--shadow); }
+.item.secret .title::after { content: "旅伴看不到"; margin-left: 6px; font-size: 11px; padding: 0 6px; border-radius: 99px; background: var(--coral); vertical-align: 2px; }
+.pass.mystery .pass-stub { background: repeating-linear-gradient(-45deg, var(--coral) 0 8px, var(--yellow) 8px 16px); }
+.pass.mystery .big { letter-spacing: 2px; }
+.surprise { display: grid; gap: 8px; }
+.surprise p { margin: 0; }
+.s-head { display: flex; align-items: center; gap: 6px; font-size: 17px; }
+.s-head .ic { width: 26px; height: 26px; }
+.s-head b { font-weight: 400; }
+.s-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.count .ic { width: 1em; height: 1em; }
+.no-edit .btns { display: none !important; }
