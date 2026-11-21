@@ -1008,3 +1008,6 @@ th { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); }
 .s-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .count .ic { width: 1em; height: 1em; }
 .no-edit .btns { display: none !important; }
+.pub-auto { display: none; grid-column: 1 / -1; margin: 0; }
+#planForm.surprise-on.auto-pub .pub-toggle { display: none !important; }
+#planForm.surprise-on.auto-pub .pub-auto { display: flex; align-items: center; gap: 6px; }

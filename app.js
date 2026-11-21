@@ -247,6 +247,7 @@ function setPlanKind(kind) {
 function setCodeHint() {
   const el = $('#planForm').elements, kind = $('#planForm [name=kind]:checked')?.value || 'spot';
   const pickup = kind === 'transit' && el.mode.value === 'pickup';
+  $('#planForm').classList.toggle('auto-pub', kind === 'flight' || pickup);
   el.code.placeholder = kind === 'flight' ? '航班號，例如 BX794' : pickup ? '接送公司 / 預約編號' : '班次 / 路線（選填）';
   el.from.placeholder = pickup ? '上車地點，例如 金海機場' : kind === 'flight' ? '出發地，例如 桃園 TPE' : '出發地';
   el.to.placeholder = pickup ? '下車地點，例如 飯店' : kind === 'flight' ? '目的地，例如 金海 PUS' : '目的地';
@@ -336,8 +337,11 @@ const sortedPlan = () => [...trip().plan].sort((a, b) => (a.date + a.start).loca
 let surprisePreview = false;
 const surpriseOn = (t = trip()) => !!t.surprise?.on;
 const isPlanner = (t = trip()) => !surpriseOn(t) || (!!db.planner?.[t.id] && !surprisePreview);
-const isLocked = (p, t = trip()) => !isPlanner(t) && !p.pub && p.date > todayStr();
-const lockedCount = (t = trip()) => t.plan.filter(p => !p.pub && p.date > todayStr()).length;
+// 航班、機場接送一律公開（大家要知道幾點集合），其他行程可個別勾「不隱藏」
+const autoPublic = p => kindOf(p) === 'flight' || (kindOf(p) === 'transit' && p.mode === 'pickup');
+const isPublic = p => !!p.pub || autoPublic(p);
+const isLocked = (p, t = trip()) => !isPlanner(t) && !isPublic(p) && p.date > todayStr();
+const lockedCount = (t = trip()) => t.plan.filter(p => !isPublic(p) && p.date > todayStr()).length;
 async function pinHash(pin, salt) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -431,7 +435,7 @@ function renderPlan() {
         ${cities.map(c => `<span class="stamp ${c}">${CITY[c].name}</span>`).join('')}
         <span class="muted count">${hidden ? ic('lock') + ' 未解鎖' : [s && `${s} 站`, m && `${m} 段交通`].filter(Boolean).join('・')}</span>
       </div>
-      ${items.length ? `<div class="timeline">${items.map(p => planItem(p, planner && on && !p.pub && d > today ? 'secret' : '')).join('')}</div>` : ''}
+      ${items.length ? `<div class="timeline">${items.map(p => planItem(p, planner && on && !isPublic(p) && d > today ? 'secret' : '')).join('')}</div>` : ''}
       ${hidden ? lockedCard(d, hidden) : ''}`;
   }).join('') || (all.length ? empty('這個分類還沒有東西', 'compass') : empty('還沒有行程～<br>從上面加入第一站吧！', 'torii'));
 }
@@ -898,7 +902,7 @@ function renderSurprise() {
   const on = surpriseOn(t), planner = !!db.planner?.[t.id];
   box.innerHTML = !on ? `
     <div class="s-head">${ic('gift')}<b>讓旅伴當天才知道行程</b></div>
-    <p class="muted small">開啟後只有你看得到未來的行程；旅伴的手機會顯示「神秘行程」，每天 00:00 自動解鎖當天的。航班這類大家必須知道的，可以在行程勾「不隱藏這一項」。</p>
+    <p class="muted small">開啟後只有你看得到未來的行程；旅伴的手機會顯示「神秘行程」，每天 00:00 自動解鎖當天的。航班和機場接送會自動公開，其他想讓大家知道的行程，可以個別勾「不隱藏這一項」。</p>
     <form class="s-form" data-sp-form="on">
       <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" placeholder="設定規劃者密碼（4–8 位數字）" required autocomplete="new-password">
       <button>開啟驚喜模式</button>
@@ -1420,7 +1424,7 @@ navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261121223909';
+const APP_VERSION = '20261121224432';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
