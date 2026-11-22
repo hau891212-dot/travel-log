@@ -1014,3 +1014,14 @@ th { background: color-mix(in srgb, var(--yellow) 30%, var(--card)); }
 /* 航班卡：沒有編輯按鈕（旅伴 / 驚喜模式）時也維持上下排列 */
 .item.flight > .fl-top, .item.flight > .fl-route, .item.flight > .sub { grid-column: 1; }
 .no-edit .item.flight, .item.flight:not(:has(.btns)) { grid-template-columns: minmax(0, 1fr); }
+
+/* ===== 住宿 ===== */
+.kind-stay .seg label:has(input:checked) { background: var(--yellow); }
+.item.stay { background: color-mix(in srgb, var(--yellow) 28%, var(--card)); border-left: 6px solid #e8b04a; }
+.item.stay .time small { font-size: 11px; }
+.item.stay .sub .tag { margin-left: 0; }
+.timeline .item.stay::before { background: var(--yellow); }
+.pass.stay .pass-stub { background: var(--yellow); }
+#planForm .out-date { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+#planForm .out-date[hidden] { display: none; }
+#planForm .out-date input { flex: 1; min-width: 0; }

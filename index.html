@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Huninn&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261121224824">
+<link rel="stylesheet" href="style.css?v=20261122231519">
 </head>
 <body>
 
@@ -299,9 +299,10 @@
     <form id="planForm" class="row-form card kind-spot">
       <div class="form-title" id="planFormTitle">新增行程</div>
       <div class="seg" role="radiogroup" aria-label="類型">
-        <label><input type="radio" name="kind" value="spot" checked><svg class="ic"><use href="#ic-pin"/></svg>景點行程</label>
+        <label><input type="radio" name="kind" value="spot" checked><svg class="ic"><use href="#ic-pin"/></svg>景點</label>
         <label><input type="radio" name="kind" value="flight"><svg class="ic"><use href="#ic-plane"/></svg>航班</label>
         <label><input type="radio" name="kind" value="transit"><svg class="ic"><use href="#ic-train"/></svg>交通</label>
+        <label><input type="radio" name="kind" value="stay"><svg class="ic"><use href="#ic-bed"/></svg>住宿</label>
       </div>
       <select name="mode" title="交通方式" data-k="transit">
         <option value="train">電車 / 地鐵</option>
@@ -311,7 +312,7 @@
         <option value="taxi">計程車</option>
         <option value="walk">步行</option>
       </select>
-      <select name="city" title="城市" data-k="spot transit">
+      <select name="city" title="城市" data-k="spot transit stay">
         <option value="busan">釜山</option>
         <option value="fukuoka">福岡</option>
         <option value="move">移動</option>
@@ -321,10 +322,11 @@
       <input name="date" type="date" required>
       <input name="start" type="time" required title="出發 / 開始">
       <input name="end" type="time" title="抵達 / 結束">
+      <label class="out-date" data-k="stay">退房日期<input name="out" type="date"></label>
       <input name="from" placeholder="出發地，例如 桃園 TPE" data-k="flight transit">
       <input name="to" placeholder="目的地，例如 金海 PUS" data-k="flight transit">
-      <input name="title" placeholder="行程名稱" required data-k="spot">
-      <input name="place" placeholder="地點（可開地圖）" data-k="spot">
+      <input name="title" placeholder="行程名稱" required data-k="spot stay">
+      <input name="place" placeholder="地點（可開地圖）" data-k="spot stay">
       <input name="note" placeholder="備註 / 訂位代號">
       <label class="pub-toggle"><input type="checkbox" name="pub"> 不隱藏這一項（旅伴也看得到）</label>
       <p class="pub-auto muted small">航班和機場接送會自動公開給旅伴</p>
@@ -506,6 +508,6 @@
 </div>
 <footer class="foot"><svg class="ic"><use href="#ic-plane"/></svg> 釜山 <svg class="ic"><use href="#ic-swap"/></svg> 福岡 <svg class="ic"><use href="#ic-ferry"/></svg><br>祝旅途愉快！</footer>
 
-<script src="app.js?v=20261121224824"></script>
+<script src="app.js?v=20261122231519"></script>
 </body>
 </html>

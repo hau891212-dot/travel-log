@@ -225,13 +225,14 @@ function renderPrep() {
 }
 
 // ===== 行程 =====
-// kind：spot 景點行程 / flight 航班 / transit 交通（mode：train ferry bus taxi walk）
+// kind：spot 景點行程 / flight 航班 / transit 交通（mode：train ferry bus taxi walk）/ stay 住宿（date 入住、out 退房）
 const MODE = { train: ['電車', 'train'], ferry: ['渡輪', 'ferry'], bus: ['巴士', 'bus'], pickup: ['機場接送', 'van'], taxi: ['計程車', 'taxi'], walk: ['步行', 'walk'] };
 const kindOf = p => p.kind || 'spot';
-const isMove = p => kindOf(p) !== 'spot';
+const isMove = p => kindOf(p) === 'flight' || kindOf(p) === 'transit';
+const planCat = p => isMove(p) ? 'move' : kindOf(p);
 const routeText = p => [p.from, p.to].filter(Boolean).join(' → ');
 const planTitle = p => p.title || routeText(p) || (kindOf(p) === 'flight' ? '航班' : (MODE[p.mode] || MODE.train)[0]);
-const kindIcon = p => kindOf(p) === 'flight' ? 'plane' : kindOf(p) === 'transit' ? (MODE[p.mode] || MODE.train)[1] : 'pin';
+const kindIcon = p => kindOf(p) === 'flight' ? 'plane' : kindOf(p) === 'transit' ? (MODE[p.mode] || MODE.train)[1] : kindOf(p) === 'stay' ? 'bed' : 'pin';
 
 function setPlanKind(kind) {
   const form = $('#planForm');
@@ -239,8 +240,9 @@ function setPlanKind(kind) {
   $$('[data-k]', form).forEach(el => {
     const on = el.dataset.k.split(' ').includes(kind);
     el.hidden = !on; el.disabled = !on;
+    $$('input', el).forEach(i => { i.disabled = !on; });
   });
-  const ph = { spot: ['開始', '結束'], flight: ['起飛', '抵達'], transit: ['出發', '抵達'] }[kind];
+  const ph = { spot: ['開始', '結束'], flight: ['起飛', '抵達'], transit: ['出發', '抵達'], stay: ['入住時間', '退房時間'] }[kind];
   form.elements.start.title = ph[0]; form.elements.end.title = ph[1];
   setCodeHint();
 }
@@ -252,6 +254,8 @@ function setCodeHint() {
   el.from.placeholder = pickup ? '上車地點，例如 金海機場' : kind === 'flight' ? '出發地，例如 桃園 TPE' : '出發地';
   el.to.placeholder = pickup ? '下車地點，例如 飯店' : kind === 'flight' ? '目的地，例如 金海 PUS' : '目的地';
   el.note.placeholder = pickup ? '司機電話 / 車牌 / 集合處' : '備註 / 訂位代號';
+  el.title.placeholder = kind === 'stay' ? '飯店 / 民宿名稱' : '行程名稱';
+  el.place.placeholder = kind === 'stay' ? '飯店地址（可開地圖）' : '地點（可開地圖）';
 }
 $('#planForm').addEventListener('change', e => {
   if (e.target.name === 'kind') setPlanKind(e.target.value);
@@ -280,10 +284,12 @@ $('#planForm').addEventListener('submit', e => {
   const t = trip();
   for (const k of ['title', 'place', 'from', 'to', 'code', 'note']) if (typeof f[k] === 'string') f[k] = f[k].trim();
   if (f.kind !== 'spot' && !f.from && !f.to) return toast('請填出發地或目的地');
-  if (f.end && f.end < f.start && !confirm('結束時間比開始早（跨午夜）？確定要儲存嗎？')) return;
+  if (f.kind === 'stay' && f.out && f.out <= f.date) return toast('退房日期要比入住日期晚');
+  if (f.kind !== 'stay' && f.end && f.end < f.start && !confirm('結束時間比開始早（跨午夜）？確定要儲存嗎？')) return;
   // 依類型清掉不用的欄位
   const rec = { kind: f.kind, date: f.date, start: f.start, end: f.end || '', note: f.note || '', ...(f.pub ? { pub: true } : {}) };
   if (f.kind === 'spot') Object.assign(rec, { city: f.city, title: f.title, place: f.place || '' });
+  else if (f.kind === 'stay') Object.assign(rec, { city: f.city, title: f.title, place: f.place || '', out: f.out || '' });
   else Object.assign(rec, { from: f.from, to: f.to, code: f.kind === 'flight' ? (f.code || '').toUpperCase() : (f.code || ''), title: '', place: '',
     city: f.kind === 'flight' ? 'move' : f.city, ...(f.kind === 'transit' ? { mode: f.mode } : {}) });
   if (f.id) { const p = t.plan.find(x => x.id === f.id); for (const k of Object.keys(p)) if (k !== 'id') delete p[k]; Object.assign(p, rec); }
@@ -300,7 +306,7 @@ function editPlan(id) {
   const kind = kindOf(p);
   form.querySelector(`[name=kind][value=${kind}]`).checked = true;
   setPlanKind(kind);
-  for (const k of ['city', 'date', 'start', 'end', 'title', 'place', 'note', 'from', 'to', 'code', 'id']) el[k].value = p[k] || '';
+  for (const k of ['city', 'date', 'start', 'end', 'title', 'place', 'note', 'from', 'to', 'code', 'out', 'id']) el[k].value = p[k] || '';
   el.mode.value = p.mode || 'train';
   el.pub.checked = !!p.pub;
   setCodeHint();
@@ -393,6 +399,19 @@ function planItem(p, cls = '') {
       ${planBtns}
     </div>`;
   }
+  if (kind === 'stay') {
+    const nights = p.out ? dayDiff(p.out, p.date) : 0;
+    const outTxt = p.out ? `住 ${nights} 晚・退房 ${fmtDate(p.out).replace(/（.）/, '')}${p.end ? ' ' + esc(p.end) : ''}` : (p.end ? `退房 ${esc(p.end)}` : '住宿');
+    return `<div class="item stay ${cls} city-${p.city || 'none'}" data-id="${p.id}">
+      <div class="time">${esc(p.start)}<small>入住</small></div>
+      <span class="tr-ic">${ic('bed')}</span>
+      <div class="main">
+        <div class="title">${cityTag(p.city)}${esc(p.title)}</div>
+        <div class="sub"><span class="tag soft">${outTxt}</span>${mapLink(p.place)}${naverLink(p)}${p.note ? ' ' + esc(p.note) : ''}</div>
+      </div>
+      ${planBtns}
+    </div>`;
+  }
   return `<div class="item spot ${cls} city-${p.city || 'none'}" data-id="${p.id}">
     <div class="time">${esc(p.start)}${p.end ? `<small>${esc(p.end)}</small>` : ''}</div>
     <div class="main">
@@ -415,10 +434,10 @@ function renderPlan() {
   const all = sortedPlan();
   $('#planList').classList.toggle('no-edit', !planner); $('#todayList').classList.toggle('no-edit', !planner);
   const vis = all.filter(p => !isLocked(p));
-  const nMove = vis.filter(isMove).length, nSpot = vis.length - nMove;
-  $('#planFilter').innerHTML = all.length ? [['all', '全部', vis.length, 'map'], ['spot', '景點', nSpot, 'pin'], ['move', '航班・交通', nMove, 'plane']]
+  const nOf = c => vis.filter(p => planCat(p) === c).length;
+  $('#planFilter').innerHTML = all.length ? [['all', '全部', vis.length, 'map'], ['spot', '景點', nOf('spot'), 'pin'], ['stay', '住宿', nOf('stay'), 'bed'], ['move', '交通', nOf('move'), 'plane']]
     .map(([v, l, n, i]) => `<button type="button" data-view="${v}" class="${planView === v ? 'on' : ''}">${ic(i)}${l}<small>${n}</small></button>`).join('') : '';
-  const list = all.filter(p => planView === 'all' || (planView === 'move') === isMove(p));
+  const list = all.filter(p => planView === 'all' || planCat(p) === planView);
   const byDay = {};
   list.forEach(p => (byDay[p.date] ||= []).push(p));
   const days = Object.keys(byDay), start = trip().start, today = todayStr();
@@ -428,12 +447,12 @@ function renderPlan() {
   $('#planList').innerHTML = days.map(d => {
     const n = dayNo(d), allItems = byDay[d], items = allItems.filter(p => !isLocked(p)), hidden = allItems.length - items.length;
     const cities = hidden ? [] : [...new Set(items.map(p => p.city).filter(c => c && c !== 'move' && CITY[c]))];
-    const s = items.filter(p => !isMove(p)).length, m = items.length - s;
+    const s = items.filter(p => planCat(p) === 'spot').length, h = items.filter(p => planCat(p) === 'stay').length, m = items.filter(isMove).length;
     return `<div class="day-head" id="day-${d}">
         <span class="day-badge">${n > 0 ? `Day ${n}` : ic('calendar')}</span>
         <span>${fmtDate(d)}</span>
         ${cities.map(c => `<span class="stamp ${c}">${CITY[c].name}</span>`).join('')}
-        <span class="muted count">${hidden ? ic('lock') + ' 未解鎖' : [s && `${s} 站`, m && `${m} 段交通`].filter(Boolean).join('・')}</span>
+        <span class="muted count">${hidden ? ic('lock') + ' 未解鎖' : [s && `${s} 站`, h && '住宿', m && `${m} 段交通`].filter(Boolean).join('・')}</span>
       </div>
       ${items.length ? `<div class="timeline">${items.map(p => planItem(p, planner && on && !isPublic(p) && d > today ? 'secret' : '')).join('')}</div>` : ''}
       ${hidden ? lockedCard(d, hidden) : ''}`;
@@ -485,6 +504,7 @@ function pass({ label, title, sub = '', extra = '', city = '', stubTop, stubMid,
 function stubOf(p) {
   if (kindOf(p) === 'flight') return { stubTop: ic('plane'), stubMid: '航班' };
   if (kindOf(p) === 'transit') { const [n, i] = MODE[p.mode] || MODE.train; return { stubTop: ic(i), stubMid: n }; }
+  if (kindOf(p) === 'stay') return { stubTop: ic('bed'), stubMid: '住宿' };
   const c = CITY[p.city];
   return { stubTop: c ? c.flag : ic('pin'), stubMid: c ? c.name : '行程' };
 }
@@ -510,7 +530,7 @@ function renderLive() {
     const pct = Math.min(100, (nowMin - toMin(current.start)) / total * 100);
     html += pass({
       cls: 'now ' + kindOf(current), city: current.city,
-      label: `<span class="live-dot"></span>NOW · ${isMove(current) ? '移動中' : '正在進行'}`, title: esc(planTitle(current)),
+      label: `<span class="live-dot"></span>NOW · ${isMove(current) ? '移動中' : kindOf(current) === 'stay' ? '入住中' : '正在進行'}`, title: esc(planTitle(current)),
       sub: `${esc(current.start)}${current.end ? '–' + esc(current.end) : ''}　${current.code ? esc(current.code) + ' ' : ''}${mapLink(current.place)}${naverLink(current)}`,
       extra: `${current.note ? `<div>${esc(current.note)}</div>` : ''}<div class="progress"><div style="width:${pct}%"></div></div>`,
       ...stubOf(current), stubBot: esc(current.start),
@@ -526,7 +546,7 @@ function renderLive() {
   } else if (next) {
     html += pass({
       city: next.city, cls: kindOf(next),
-      label: `NEXT · ${kindOf(next) === 'flight' ? '下一班飛機' : isMove(next) ? '下一段交通' : '下一站'}`, title: esc(planTitle(next)),
+      label: `NEXT · ${kindOf(next) === 'flight' ? '下一班飛機' : isMove(next) ? '下一段交通' : kindOf(next) === 'stay' ? '入住' : '下一站'}`, title: esc(planTitle(next)),
       sub: `${fmtDate(next.date)} ${esc(next.start)}　${next.code ? esc(next.code) + ' ' : ''}${mapLink(next.place)}${naverLink(next)}`,
       extra: `<div class="countdown">${ic('hourglass')} ${countdown(next, now)}</div>`,
       ...stubOf(next), stubBot: esc(next.start),
@@ -1424,7 +1444,7 @@ navigator.storage?.persist?.().catch(() => {});
 
 // ===== 自動偵測更新 =====
 // APP_VERSION 由 git pre-commit hook 自動蓋上，不用手動改
-const APP_VERSION = '20261121224824';
+const APP_VERSION = '20261122231519';
 let swReg = null, updating = false;
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

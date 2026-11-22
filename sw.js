@@ -1,6 +1,6 @@
 // 離線快取：網路優先（略過瀏覽器 HTTP 快取），失敗時用快取（出國沒網路也能開）
 // CACHE 版本由 git pre-commit hook 自動更新，不用手動改
-const CACHE = 'travel-log-20261121224824';
+const CACHE = 'travel-log-20261122231519';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', e => {
